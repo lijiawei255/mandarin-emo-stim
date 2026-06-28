@@ -1,152 +1,196 @@
-/* 构成主义（Constructivism）风格样式表
-   五色严格限定：红 #E30613 / 蓝 #0057B8 / 黄 #FFD600 / 黑 #000000 / 白 #FFFFFF
-   控件：直角矩形、border-radius:0、无阴影、无渐变、3px 黑框 */
+/* 浅色包豪斯（Light Bauhaus）风格样式表
+   设计原则：
+     - 功能优先：去除冗余装饰，保留核心控件与信息层级
+     - 几何网格：基于 8px 网格系统对齐，1px 细线分隔
+     - 高对比度：浅色背景（白/浅灰）配深色文字
+     - 有限色彩：主色 1 种（Bauhaus 蓝 #1F5FA8）+ 中性灰阶；
+                  状态色语义化（成功 #2E7D32 / 警告 #B8860B / 错误 #C62828） */
 
+/* ===== 全局 ===== */
 QWidget {
     background-color: #FFFFFF;
-    color: #000000;
-    font-family: "Source Han Sans", "Microsoft YaHei", "DIN Alternate", sans-serif;
+    color: #1A1A1A;
+    font-family: "Source Han Sans", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 13px;
 }
 
-/* ===== 模型加载浮层 ===== */
-#LoadingOverlay {
-    background-color: rgba(0, 0, 0, 180);  /* 半透明黑色遮罩 */
-}
-#LoadingCard {
+/* ===== 面板卡片（统一的浅色分区） ===== */
+QFrame#RedPanel, QFrame#MainPanel, QFrame#BluePanel, QFrame#YellowPanel {
     background-color: #FFFFFF;
-    border: 3px solid #000000;
+    border: 1px solid #D9D9D9;
+    border-radius: 0px;
+}
+/* 输入控制区：浅灰底，与主区区分 */
+QFrame#RedPanel {
+    background-color: #F5F5F7;
+}
+/* 多模态分解区：浅灰底 */
+QFrame#BluePanel {
+    background-color: #F5F5F7;
 }
 
 /* ===== 通用按钮 ===== */
 QPushButton {
-    border: 3px solid #000000;
+    border: 1px solid #1A1A1A;
     border-radius: 0px;
-    padding: 10px 16px;
-    font-weight: bold;
+    padding: 8px 14px;
     background-color: #FFFFFF;
-    color: #000000;
+    color: #1A1A1A;
+    font-weight: 600;
 }
 QPushButton:hover {
-    background-color: #FFD600;
+    background-color: #1F5FA8;
+    color: #FFFFFF;
+    border-color: #1F5FA8;
 }
 QPushButton:pressed {
-    background-color: #000000;
+    background-color: #14437A;
     color: #FFFFFF;
 }
 QPushButton:disabled {
-    background-color: #CCCCCC;
-    color: #888888;
-    border-color: #888888;
+    background-color: #ECECEC;
+    color: #9A9A9A;
+    border-color: #D9D9D9;
+}
+QPushButton:checked {
+    background-color: #1A1A1A;
+    color: #FFFFFF;
 }
 
-/* ===== 红色块（音频控制区） ===== */
-#RedPanel {
-    background-color: #E30613;
-    border: 3px solid #000000;
-}
-#RedPanel QLabel {
+/* 主操作按钮（生成刺激）强调主色 */
+QPushButton#btn_generate {
+    background-color: #1F5FA8;
     color: #FFFFFF;
-    font-weight: bold;
+    border-color: #1F5FA8;
 }
-#RedPanel QPushButton {
-    background-color: #E30613;
+QPushButton#btn_generate:hover {
+    background-color: #14437A;
+}
+QPushButton#btn_generate:disabled {
+    background-color: #C9D6E5;
     color: #FFFFFF;
-    border: 3px solid #FFFFFF;
-}
-#RedPanel QPushButton:hover {
-    background-color: #FFFFFF;
-    color: #E30613;
-}
-#RedPanel QPushButton:checked {
-    background-color: #FFFFFF;
-    color: #E30613;
-}
-#RedPanel QComboBox {
-    background-color: #FFFFFF;
-    color: #000000;
-    border: 3px solid #FFFFFF;
+    border-color: #C9D6E5;
 }
 
-/* ===== 蓝色块（多模态分解） ===== */
-#BluePanel {
-    background-color: #0057B8;
-    border: 3px solid #000000;
-}
-#BluePanel QLabel {
-    color: #FFFFFF;
-    font-weight: bold;
-}
-
-/* ===== 黄色块（声刺激） ===== */
-#YellowPanel {
-    background-color: #FFD600;
-    border: 3px solid #000000;
-}
-#YellowPanel QLabel {
-    color: #000000;
-    font-weight: bold;
-}
-
-/* ===== 黑色状态块 ===== */
-#StatusPanel {
-    background-color: #000000;
-    border: 3px solid #000000;
-}
-#StatusPanel QLabel {
-    color: #FFFFFF;
+/* ===== 标题 / 标签 ===== */
+QLabel#SectionTitle {
     font-size: 12px;
+    font-weight: 700;
+    color: #1F5FA8;
+    letter-spacing: 1px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #1F5FA8;
 }
 
-/* ===== 白色主展示区 ===== */
-#MainPanel {
-    background-color: #FFFFFF;
-    border: 3px solid #000000;
+/* 输入控制区内的标签：深色文字（浅灰底上） */
+QFrame#RedPanel QLabel, QFrame#BluePanel QLabel {
+    color: #1A1A1A;
 }
 
-/* ===== 进度条 / 滑块（直角） ===== */
+/* 状态色文字（语义化） */
+QLabel[role="success"] { color: #2E7D32; font-weight: 600; }
+QLabel[role="warning"] { color: #B8860B; font-weight: 600; }
+QLabel[role="error"]   { color: #C62828; font-weight: 600; }
+
+/* ===== 进度条 / 滑块（直角细线） ===== */
 QProgressBar {
-    border: 3px solid #000000;
+    border: 1px solid #D9D9D9;
     border-radius: 0px;
-    background-color: #FFFFFF;
+    background-color: #F0F0F0;
     text-align: center;
-    font-weight: bold;
+    font-weight: 600;
+    color: #1A1A1A;
 }
 QProgressBar::chunk {
-    background-color: #E30613;
+    background-color: #1F5FA8;
 }
 QSlider::groove:horizontal {
-    border: 2px solid #000000;
-    height: 6px;
-    background: #FFFFFF;
+    border: 1px solid #D9D9D9;
+    height: 4px;
+    background: #ECECEC;
 }
 QSlider::handle:horizontal {
-    background: #000000;
+    background: #1F5FA8;
     width: 14px;
+    height: 14px;
     margin: -6px 0;
-    border: 2px solid #000000;
+    border: none;
+}
+QSlider::sub-page:horizontal {
+    background: #1F5FA8;
+}
+
+/* ===== 下拉框 ===== */
+QComboBox {
+    border: 1px solid #1A1A1A;
+    background-color: #FFFFFF;
+    padding: 6px 10px;
+    border-radius: 0px;
+}
+QComboBox:hover {
+    border-color: #1F5FA8;
+}
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+QComboBox QAbstractItemView {
+    border: 1px solid #D9D9D9;
+    background-color: #FFFFFF;
+    selection-background-color: #1F5FA8;
+    selection-color: #FFFFFF;
 }
 
 /* ===== 文本区 ===== */
 QTextEdit, QPlainTextEdit {
-    border: 3px solid #000000;
+    border: 1px solid #D9D9D9;
     background-color: #FFFFFF;
-    color: #000000;
+    color: #1A1A1A;
 }
 
-/* ===== 菜单栏 ===== */
+/* ===== 菜单栏（浅色细线） ===== */
 QMenuBar {
-    background-color: #000000;
-    color: #FFFFFF;
-    border: none;
+    background-color: #FFFFFF;
+    color: #1A1A1A;
+    border-bottom: 1px solid #D9D9D9;
+    padding: 2px;
+}
+QMenuBar::item {
+    padding: 6px 12px;
+    background: transparent;
 }
 QMenuBar::item:selected {
-    background-color: #FFD600;
-    color: #000000;
+    background-color: #E8EEF6;
+    color: #1F5FA8;
 }
 QMenu {
-    border: 3px solid #000000;
+    border: 1px solid #D9D9D9;
     background-color: #FFFFFF;
 }
+QMenu::item {
+    padding: 6px 24px;
+}
 QMenu::item:selected {
-    background-color: #FFD600;
+    background-color: #1F5FA8;
+    color: #FFFFFF;
+}
+
+/* ===== 状态块（浅灰细线，非黑底） ===== */
+QFrame#StatusPanel {
+    background-color: #F5F5F7;
+    border: 1px solid #D9D9D9;
+    border-radius: 0px;
+}
+QFrame#StatusPanel QLabel {
+    color: #1A1A1A;
+    font-size: 12px;
+}
+
+/* ===== 模型加载浮层 ===== */
+#LoadingOverlay {
+    background-color: rgba(255, 255, 255, 235);  /* 浅色半透明遮罩 */
+}
+#LoadingCard {
+    background-color: #FFFFFF;
+    border: 1px solid #1A1A1A;
 }

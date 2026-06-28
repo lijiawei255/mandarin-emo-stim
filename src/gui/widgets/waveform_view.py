@@ -1,6 +1,6 @@
 """波形可视化控件（pyqtgraph）。
 
-构成主义风格：黄色块面板上绘制黑色波形线条，播放时白色进度线。
+浅色包豪斯风格：白色背景上绘制主色（蓝）波形线条，播放时主色进度线。
 为性能对长波形做下采样（每像素 ~1 个点）。
 """
 
@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+# 包豪斯主色
+_PRIMARY = "#1F5FA8"
 
 
 class WaveformView(QWidget):
@@ -22,25 +24,28 @@ class WaveformView(QWidget):
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        pg.setConfigOption("background", "#FFD600")
-        pg.setConfigOption("foreground", "#000000")
+        pg.setConfigOption("background", "#FFFFFF")
+        pg.setConfigOption("foreground", "#1A1A1A")
         self.plot = pg.PlotWidget()
         self.plot.setMouseEnabled(False, False)
         self.plot.hideButtons()
-        self.plot.getAxis("bottom").setPen("#000000")
-        self.plot.getAxis("left").setPen("#000000")
-        self.plot.setLabel("bottom", "时间 (s)")
-        self.plot.setLabel("left", "幅度")
+        self.plot.getAxis("bottom").setPen("#9A9A9A")
+        self.plot.getAxis("left").setPen("#9A9A9A")
+        self.plot.getAxis("bottom").setTextPen("#6A6A6A")
+        self.plot.getAxis("left").setTextPen("#6A6A6A")
+        self.plot.setLabel("bottom", "时间 (s)", color="#6A6A6A")
+        self.plot.setLabel("left", "幅度", color="#6A6A6A")
+        self.plot.showGrid(x=True, y=False, alpha=0.15)
         layout.addWidget(self.plot)
 
-        self.wave_item = pg.PlotCurveItem(pen=pg.mkPen("#000000", width=1))
+        self.wave_item = pg.PlotCurveItem(pen=pg.mkPen(_PRIMARY, width=1))
         self.plot.addItem(self.wave_item)
 
-        # 播放进度线（白色竖线）
-        self.position_line = pg.InfiniteLine(angle=90, movable=False,
-                                             pen=pg.mkPen("#FFFFFF", width=2))
+        # 播放进度线（主色虚线）
+        self.position_line = pg.InfiniteLine(
+            angle=90, movable=False, pen=pg.mkPen(_PRIMARY, width=1, style=pg.QtCore.Qt.PenStyle.DashLine))
         self.plot.addItem(self.position_line)
         self.position_line.setVisible(False)
 

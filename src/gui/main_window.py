@@ -1,11 +1,15 @@
-"""构成主义风格主窗口。
+"""浅色包豪斯（Light Bauhaus）风格主窗口。
 
-五大功能块面：
-    左红   : 音频输入控制
-    中白   : 核心情感量化展示
-    右蓝   : 多模态分解详情
-    底黄   : 声刺激生成与波形
-    右黑   : 状态指示
+设计原则：功能优先（去除冗余装饰）、几何网格（8px 对齐）、高对比度
+（浅色背景 + 深色文字）、有限色彩（主色 Bauhaus 蓝 #1F5FA8 + 中性灰阶；
+状态色语义化：成功绿 / 警告琥珀 / 错误红）。
+
+五大功能分区（卡片式，1px 细线分隔，无厚色块）：
+    左   : 音频输入控制（开始/上传/设备选择/录制计时）
+    中   : 核心情感量化展示（NEGATIVE/VALENCE/AROUSAL + 象限 + ASR）
+    右   : 多模态分解详情（6 模态分项条形图 + 副语言事件）
+    底   : 声刺激生成与波形（按钮 + 波形 + 音量）
+    底栏 : 状态指示（运行状态 / 推理模式 / 模型进度）
 
 多线程：模型加载 / 分析 / 刺激生成均在工作线程，通过 Signal 更新 UI。
 """
@@ -104,16 +108,17 @@ class MainWindow(QMainWindow):
         f.setObjectName(name)
         return f
 
-    # ----- 红色块：音频输入控制 -----
+    # ----- 音频输入控制区 -----
     def _build_red_panel(self) -> QWidget:
         panel = self._panel_frame("RedPanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
 
         layout.addWidget(self._h1("音频输入"))
 
         self.btn_record = QPushButton("开始录音")
+        self.btn_record.setObjectName("btn_record")
         self.btn_record.setCheckable(True)
         self.btn_upload = QPushButton("上传音频")
         self.btn_reset = QPushButton("停止 / 重置")
@@ -126,11 +131,11 @@ class MainWindow(QMainWindow):
 
         # 录制时长显示
         self.record_elapsed_label = QLabel("已录制：0.0 秒")
-        self.record_elapsed_label.setStyleSheet("color: #FFFFFF; font-weight: bold;")
+        self.record_elapsed_label.setProperty("role", "success")
         layout.addWidget(self.record_elapsed_label)
 
         self.snr_warning = QLabel("")
-        self.snr_warning.setStyleSheet("color: #FFD600; font-weight: bold;")
+        self.snr_warning.setProperty("role", "warning")  # 警告色
         self.snr_warning.setWordWrap(True)
         layout.addWidget(self.snr_warning)
         layout.addStretch()
@@ -148,12 +153,12 @@ class MainWindow(QMainWindow):
         except Exception:
             return ["（无法枚举设备）"]
 
-    # ----- 白色主区：核心指标 -----
+    # ----- 核心指标区 -----
     def _build_main_panel(self) -> QWidget:
         panel = self._panel_frame("MainPanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
 
         self.metric_negative = MetricBar("NEGATIVE SCORE", "negative")
         self.metric_valence = MetricBar("VALENCE", "valence")
@@ -163,36 +168,41 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.metric_arousal)
 
         self.quadrant_label = QLabel("情绪象限：—")
-        self.quadrant_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+        self.quadrant_label.setStyleSheet(
+            "font-size: 18px; font-weight: 700; color: #1F5FA8; "
+            "padding: 8px 0; border: none;"
+        )
         layout.addWidget(self.quadrant_label)
 
         layout.addWidget(self._h1("ASR 转写"))
         self.asr_text = QTextEdit()
         self.asr_text.setReadOnly(True)
-        self.asr_text.setFixedHeight(80)
+        self.asr_text.setFixedHeight(72)
         self.asr_text.setPlaceholderText("（转写结果将显示于此）")
         layout.addWidget(self.asr_text)
         layout.addStretch()
         return panel
 
-    # ----- 蓝色块：多模态分解 -----
+    # ----- 多模态分解区 -----
     def _build_blue_panel(self) -> QWidget:
         panel = self._panel_frame("BluePanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(16, 16, 16, 16)
         self.modal_bars = ModalBars()
         layout.addWidget(self.modal_bars)
         return panel
 
-    # ----- 黄色块：声刺激 -----
+    # ----- 声刺激区 -----
     def _build_yellow_panel(self) -> QWidget:
         panel = self._panel_frame("YellowPanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(20, 12, 20, 12)
+        layout.setSpacing(8)
 
         head = QHBoxLayout()
+        head.setSpacing(8)
         self.btn_generate = QPushButton("生成刺激波形")
+        self.btn_generate.setObjectName("btn_generate")  # 主色强调
         self.btn_generate.setEnabled(False)
         self.btn_play = QPushButton("▶ 播放")
         self.btn_pause = QPushButton("⏸ 暂停")
@@ -207,7 +217,9 @@ class MainWindow(QMainWindow):
         head.addWidget(self.btn_save)
         head.addStretch()
         self.param_label = QLabel("♩=—  f=—  时长=—")
-        self.param_label.setStyleSheet("font-weight: bold;")
+        self.param_label.setStyleSheet(
+            "color: #6A6A6A; font-size: 12px; border: none;"
+        )
         head.addWidget(self.param_label)
         layout.addLayout(head)
 
@@ -252,8 +264,9 @@ class MainWindow(QMainWindow):
         help_menu.addAction(act_about)
 
     def _h1(self, text: str) -> QLabel:
+        """节区小标题（主色大写，下划线分隔，包豪斯风格）。"""
         lbl = QLabel(text)
-        lbl.setStyleSheet("font-size: 14px; font-weight: bold;")
+        lbl.setObjectName("SectionTitle")
         return lbl
 
     # ------------------------------------------------------------------ #

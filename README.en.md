@@ -28,7 +28,7 @@ With just a microphone, the tool:
 - **Fully offline**: Once all models and runtime data are downloaded, no network connection is required.
 - **Multi-modal fusion**: Acoustic emotion (emotion2vec), prosody (parselmouth), paralinguistic events (PANNs), physical acoustics (librosa), text semantics (Qwen3), text statistics (jieba).
 - **Differentiated stimuli**: Continuous acoustic-parameter mapping from four-quadrant anchors, soft-blended to avoid abrupt hard switching.
-- **Constructivist GUI**: PySide6 + pyqtgraph, geometric blocks, high-contrast flat colors.
+- **Light Bauhaus GUI**: PySide6 + pyqtgraph, light background, limited palette, geometric grid, high contrast, function-first.
 - **Green & portable**: All data stays under `portable_data/` in the project directory; deleting the folder removes everything.
 - **License-compliant**: Apache License 2.0, compatible with all upstream models and dependencies.
 

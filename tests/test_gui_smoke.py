@@ -223,6 +223,7 @@ def record_window(window, monkeypatch):
         progress = _SignalStub()
         finished_ok = _SignalStub()
         failed = _SignalStub()
+        interrupted = _SignalStub()
 
         def __init__(self, manager, audio_path):
             started["path"] = audio_path
@@ -286,7 +287,8 @@ def test_record_stop_lands_wav_and_triggers_analysis(record_window, tmp_path, mo
 
     assert w.is_recording is False
     assert w.btn_record.text() == "开始录音"
-    assert w.btn_upload.isEnabled() is True
+    # 分析已启动：btn_upload 在分析期间被禁用（并发防护）
+    assert w.btn_upload.isEnabled() is False
     # 触发了分析 worker，且传入了落盘的 wav 路径
     assert w._stub_started.get("called") is True
     path = w._stub_started.get("path", "")

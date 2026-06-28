@@ -1,24 +1,18 @@
 """核心指标进度条控件（NEGATIVE / VALENCE / AROUSAL）。
 
-构成主义风格：大号数值 + 横向实心矩形进度条（无圆角），按指标配色。
+浅色包豪斯风格：标题行（小号大写标签 + 大号数值）+ 横向细线进度条。
+所有指标统一使用主色（Bauhaus 蓝）填充，避免色彩冗余；通过标签文字区分含义。
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar,
                                QVBoxLayout, QWidget)
 
 
 class MetricBar(QWidget):
     """单条指标展示（标签 + 数值 + 进度条）。"""
-
-    # 各指标对应的进度条 chunk 颜色
-    COLORS = {
-        "negative": "#E30613",
-        "valence": "#0057B8",
-        "arousal": "#FFD600",
-    }
 
     def __init__(self, title: str, key: str, parent=None):
         super().__init__(parent)
@@ -27,32 +21,35 @@ class MetricBar(QWidget):
 
     def _build(self, title: str) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(0, 4, 0, 8)
         layout.setSpacing(4)
 
+        # 标题行：小号大写标签（左）+ 大号数值（右）
         head = QHBoxLayout()
+        head.setSpacing(8)
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.title_label.setObjectName("SectionTitle")
         self.value_label = QLabel("0.50")
+        self.value_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.value_label.setStyleSheet(
-            "font-size: 32px; font-weight: bold; color: #000000;"
+            "font-size: 24px; font-weight: 700; color: #1A1A1A; "
+            "border: none; padding: 0;"
         )
-        self.value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         head.addWidget(self.title_label)
         head.addStretch()
         head.addWidget(self.value_label)
         layout.addLayout(head)
 
+        # 进度条：统一主色填充，细线边框
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
         self.bar.setValue(500)
         self.bar.setTextVisible(False)
-        self.bar.setFixedHeight(24)
-        color = self.COLORS.get(self.key, "#000000")
-        # 指标条配色（chunk 颜色）
+        self.bar.setFixedHeight(10)
         self.bar.setStyleSheet(
-            f"QProgressBar {{ border: 3px solid #000; background: #FFF; }}"
-            f"QProgressBar::chunk {{ background: {color}; }}"
+            "QProgressBar { border: 1px solid #D9D9D9; background: #F0F0F0; }"
+            "QProgressBar::chunk { background: #1F5FA8; }"
         )
         layout.addWidget(self.bar)
 
