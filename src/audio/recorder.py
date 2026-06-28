@@ -1,0 +1,123 @@
+"""麦克风实时录音（sounddevice InputStream）。
+
+提供同步「录制指定时长」与异步「开始/停止」两种模式。
+采样率 16000Hz、单声道、16bit PCM，chunk_size=1024（64ms）。
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from collections import deque
+from typing import Callable
+
+import numpy as np
+import sounddevice as sd
+
+from src.config_loader import load_settings
+
+
+class AudioRecorder:
+    """麦克风录音器（线程安全）。"""
+
+    def __init__(self, sr: int | None = None, channels: int = 1,
+                 chunk_size: int | None = None, device: int | None = None):
+        audio_cfg = load_settings()["audio"]
+        self.sr = sr or int(audio_cfg["sample_rate"])
+        self.channels = channels
+        self.chunk_size = chunk_size or int(audio_cfg["chunk_size"])
+        self.device = device
+        self.max_duration = float(audio_cfg["record_duration_max"])
+
+        self._buffer: deque[np.ndarray] = deque()
+        self._stream: sd.InputStream | None = None
+        self._lock = threading.Lock()
+        self._recording = False
+        self._start_time: float = 0.0
+
+    @staticmethod
+    def list_devices() -> list[dict]:
+        """列出可用输入设备。"""
+        devs = sd.query_devices()
+        result = []
+        for i, d in enumerate(devs):
+            if d.get("max_input_channels", 0) > 0:
+                result.append({"id": i, "name": d["name"],
+                               "channels": d["max_input_channels"],
+                               "default_sr": d.get("default_samplerate")})
+        return result
+
+    def _callback(self, indata: np.ndarray, frames: int,
+                  time_info, status) -> None:
+        if status:
+            pass  # 可记录溢出，但暂不中断
+        if self._recording:
+            with self._lock:
+                self._buffer.append(indata.copy())
+
+    def start(self) -> None:
+        """开始录音（异步）。"""
+        if self._recording:
+            return
+        self._buffer.clear()
+        self._stream = sd.InputStream(
+            samplerate=self.sr, channels=self.channels, dtype="float32",
+            blocksize=self.chunk_size, device=self.device,
+            callback=self._callback,
+        )
+        self._stream.start()
+        self._recording = True
+        self._start_time = time.time()
+
+    def stop(self) -> np.ndarray:
+        """停止录音并返回完整波形。
+
+        Returns:
+            单声道 float32 波形（shape=(n,)）。
+        """
+        if not self._recording:
+            return np.array([], dtype=np.float32)
+        self._recording = False
+        if self._stream is not None:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+        with self._lock:
+            if not self._buffer:
+                return np.array([], dtype=np.float32)
+            data = np.concatenate(list(self._buffer), axis=0)
+        # 单声道：取第一列
+        if data.ndim > 1:
+            data = data[:, 0]
+        return np.ascontiguousarray(data.astype(np.float32))
+
+    def is_recording(self) -> bool:
+        return self._recording
+
+    def elapsed(self) -> float:
+        """已录制时长（秒）。"""
+        if not self._recording:
+            return 0.0
+        return time.time() - self._start_time
+
+    def record(self, duration: float,
+               progress_cb: Callable[[float], None] | None = None) -> np.ndarray:
+        """同步录制指定时长。
+
+        Args:
+            duration: 录制秒数（会被限制到 max_duration）。
+            progress_cb: 进度回调（传入已录制秒数）。
+
+        Returns:
+            单声道 float32 波形。
+        """
+        duration = min(duration, self.max_duration)
+        self.start()
+        try:
+            t0 = time.time()
+            while time.time() - t0 < duration:
+                if progress_cb:
+                    progress_cb(time.time() - t0)
+                time.sleep(0.05)
+        finally:
+            return self.stop()
