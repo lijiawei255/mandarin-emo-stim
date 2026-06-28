@@ -1,7 +1,11 @@
 """Qwen3-1.7B 文本语义情感 LLM 封装（bitsandbytes NF4 量化）。
 
-通过 prompt 让模型输出两个 0~1 的浮点数（负面分、唤醒度），用正则解析。
+通过 few-shot prompt 让模型输出两个 0~1 的浮点数（负面分、唤醒度），用正则解析。
+启用 ``enable_thinking=False`` 跳过 Qwen3 的思考模式（避免 <think> 块干扰）。
 解析失败时 temperature=0 重试一次，二次失败降级为文本统计分数。
+
+注：1.7B 小模型对精确数值评分能力有限，故采用 few-shot 示例约束输出格式与量纲，
+实际情感量化以 6 模态加权融合为主，LLM 仅作为文本语义支路之一。
 """
 
 from __future__ import annotations
@@ -14,13 +18,19 @@ from src.config_loader import load_settings
 
 logger = logging.getLogger("mandarin_emo_stim.llm")
 
-_PROMPT_TEMPLATE = (
-    "请分析以下中文口语转写文本的情绪，只输出两个0到1之间的小数"
-    "（空格分隔，保留两位小数），第一个是负面情绪分"
-    "（0=极度正面，1=极度负面），第二个是情绪唤醒度"
-    "（0=极度平静，1=极度激动）。不要输出任何其他内容。\n"
-    "/no_think\n\n文本：{asr_text}"
+_SYSTEM_PROMPT = (
+    "你是情绪分析器。对中文句子输出两个0到1的小数（空格分隔）："
+    "第一个是负面情绪分（0=非常正面，1=非常负面），"
+    "第二个是情绪唤醒度（0=非常平静，1=非常激动）。只输出两个数字，不要解释。"
 )
+
+# few-shot 示例（约束输出量纲，提升小模型一致性）
+_FEW_SHOTS = [
+    ("我今天非常开心！", "0.10 0.80"),
+    ("我很难过，太痛苦了", "0.90 0.30"),
+    ("今天天气不错", "0.40 0.40"),
+    ("气死我了，太过分了！", "0.95 0.95"),
+]
 
 _FLOAT_PAIR_RE = re.compile(r"([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)")
 
@@ -87,7 +97,7 @@ class LLMModel:
             s, a = parsed
             return {"s_text_llm": s, "a_text_llm": a, "raw": raw, "fallback": False}
 
-        # 重试：temperature=0
+        # 重试：temperature=0（贪婪）
         logger.warning("LLM 输出解析失败，重试（temperature=0）：%s", raw)
         raw = self._generate(asr_text, temperature=0.0)
         parsed = self._parse(raw)
@@ -99,14 +109,30 @@ class LLMModel:
         logger.warning("LLM 二次解析失败，降级为中性分：%s", raw)
         return {"s_text_llm": 0.5, "a_text_llm": 0.5, "raw": raw, "fallback": True}
 
+    def _build_messages(self, asr_text: str) -> list[dict]:
+        """构建 few-shot 消息序列。"""
+        messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+        for text, answer in _FEW_SHOTS:
+            messages.append({"role": "user", "content": text})
+            messages.append({"role": "assistant", "content": answer})
+        messages.append({"role": "user", "content": asr_text})
+        return messages
+
     def _generate(self, asr_text: str, temperature: float) -> str:
         import torch
         settings = load_settings()["models"]
-        prompt = _PROMPT_TEMPLATE.format(asr_text=asr_text)
-        messages = [{"role": "user", "content": prompt}]
-        text = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        messages = self._build_messages(asr_text)
+        # enable_thinking=False 跳过 Qwen3 思考模式
+        try:
+            text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+                enable_thinking=False,
+            )
+        except TypeError:
+            # 旧版 transformers 不支持 enable_thinking 参数
+            text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
         inputs = self.tokenizer(text, return_tensors="pt").to(self.model.device)
         with torch.no_grad():
             out = self.model.generate(
