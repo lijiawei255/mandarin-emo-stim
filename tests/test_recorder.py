@@ -42,6 +42,44 @@ def test_list_devices_returns_list():
         assert "id" in d and "name" in d
 
 
+def test_elapsed_correct_after_stop(monkeypatch):
+    """回归测试：stop() 后 elapsed() 必须返回真实录制时长，而非 0。
+
+    历史 bug：elapsed() 依赖 _recording 标志，stop() 先把它设为 False，
+    随后调用 elapsed() 永远返回 0，导致 GUI 误判「录音过短」。
+    """
+    import time
+    import numpy as np
+    import src.audio.recorder as rec_mod
+
+    class _FakeStream:
+        def __init__(self, **kw):
+            pass
+        def start(self):
+            pass
+        def stop(self):
+            pass
+        def close(self):
+            pass
+
+    def _fake_import_sd():
+        class _SD:
+            InputStream = _FakeStream
+        return _SD
+
+    monkeypatch.setattr(rec_mod, "_import_sd", _fake_import_sd)
+
+    rec = AudioRecorder(sr=16000)
+    rec.start()
+    time.sleep(0.3)
+    # 注入一些模拟采集数据
+    rec._buffer.append(np.zeros((4800, 1), dtype=np.float32))
+    rec.stop()
+
+    # 关键断言：停止后 elapsed() 不应为 0
+    assert rec.elapsed() > 0.2, "stop() 后 elapsed() 不应返回 0（历史回归 bug）"
+
+
 def test_max_duration_from_config():
     """max_duration 取自配置（默认 60）。"""
     rec = AudioRecorder()

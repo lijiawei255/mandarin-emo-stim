@@ -44,6 +44,7 @@ class AudioRecorder:
         self._lock = threading.Lock()
         self._recording = False
         self._start_time: float = 0.0
+        self._stop_time: float = 0.0   # 停止时刻，用于 stop() 后仍能取到正确时长
 
     @staticmethod
     def list_devices() -> list[dict]:
@@ -113,6 +114,7 @@ class AudioRecorder:
         self._stream.start()
         self._recording = True
         self._start_time = time.time()
+        self._stop_time = 0.0  # 重置停止时刻
 
     def stop(self) -> np.ndarray:
         """停止录音并返回完整波形。
@@ -123,6 +125,7 @@ class AudioRecorder:
         if not self._recording:
             return np.array([], dtype=np.float32)
         self._recording = False
+        self._stop_time = time.time()  # 记录停止时刻，供 elapsed() 取用
         if self._stream is not None:
             self._stream.stop()
             self._stream.close()
@@ -140,10 +143,15 @@ class AudioRecorder:
         return self._recording
 
     def elapsed(self) -> float:
-        """已录制时长（秒）。"""
-        if not self._recording:
+        """已录制时长（秒）。
+
+        录音中返回当前已录时长；停止后返回 _start_time 到 _stop_time 的时长
+        （不再依赖 _recording 标志，避免 stop() 先于 elapsed() 调用时返回 0）。
+        """
+        if self._start_time <= 0:
             return 0.0
-        return time.time() - self._start_time
+        end = self._stop_time if self._stop_time > 0 else time.time()
+        return max(0.0, end - self._start_time)
 
     def record(self, duration: float,
                progress_cb: Callable[[float], None] | None = None) -> np.ndarray:

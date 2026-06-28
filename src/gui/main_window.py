@@ -461,6 +461,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "录音为空", "未采集到音频数据，请检查麦克风。")
             return
 
+        # 时长以波形实际长度为准（最可靠），elapsed() 作为参考
+        duration_from_waveform = len(waveform) / sr if sr > 0 else 0.0
+        if duration_from_waveform > 0:
+            elapsed = duration_from_waveform
+
         # 过短录音（<0.5s）视为无效
         if elapsed < 0.5:
             self.status_block.set_status("就绪")
