@@ -37,12 +37,35 @@ class AudioRecorder:
 
     @staticmethod
     def list_devices() -> list[dict]:
-        """列出可用输入设备。"""
-        devs = sd.query_devices()
-        result = []
+        """列出可用输入设备。
+
+        在某些中文 Windows 环境下，sounddevice 解码设备名时会抛
+        ``UnicodeDecodeError``，此处捕获并回退到逐设备查询（容错）。
+        """
+        result: list[dict] = []
+        try:
+            devs = sd.query_devices()
+        except UnicodeDecodeError:
+            # 回退：逐索引查询，逐个容错
+            for i in range(32):  # 设备数上限
+                try:
+                    d = sd.query_devices(i)
+                except Exception:
+                    break
+                if d.get("max_input_channels", 0) > 0:
+                    name = d.get("name", f"device_{i}")
+                    if not isinstance(name, str):
+                        name = str(name)
+                    result.append({"id": i, "name": name,
+                                   "channels": d["max_input_channels"],
+                                   "default_sr": d.get("default_samplerate")})
+            return result
         for i, d in enumerate(devs):
             if d.get("max_input_channels", 0) > 0:
-                result.append({"id": i, "name": d["name"],
+                name = d.get("name", f"device_{i}")
+                if not isinstance(name, str):
+                    name = str(name)
+                result.append({"id": i, "name": name,
                                "channels": d["max_input_channels"],
                                "default_sr": d.get("default_samplerate")})
         return result

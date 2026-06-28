@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog,
                                QVBoxLayout, QWidget)
 
 from src import portable
+from src.audio.loader import save_wav
+from src.audio.recorder import AudioRecorder
 from src.config_loader import load_settings
 from src.gui.threads import (AnalysisWorker, ModelLoadWorker, StimulusWorker)
 from src.gui.widgets.metric_bar import MetricBar
@@ -48,6 +50,12 @@ class MainWindow(QMainWindow):
         self.last_result: dict | None = None
         self.last_stimulus = None
         self.history = HistoryManager()
+
+        # 录音状态
+        self.recorder: AudioRecorder | None = None
+        self.is_recording = False
+        self.record_timer = QTimer(self)
+        self.record_timer.timeout.connect(self._update_record_elapsed)
 
         self._build_ui()
         self._connect_workers_slots()
@@ -106,6 +114,11 @@ class MainWindow(QMainWindow):
         self.device_combo = QComboBox()
         self.device_combo.addItems(self._list_input_devices())
         layout.addWidget(self.device_combo)
+
+        # 录制时长显示
+        self.record_elapsed_label = QLabel("已录制：0.0 秒")
+        self.record_elapsed_label.setStyleSheet("color: #FFFFFF; font-weight: bold;")
+        layout.addWidget(self.record_elapsed_label)
 
         self.snr_warning = QLabel("")
         self.snr_warning.setStyleSheet("color: #FFD600; font-weight: bold;")
@@ -264,13 +277,104 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "模型加载失败", msg)
 
     def on_record_clicked(self) -> None:
-        # 录音功能在阶段 7 简化：提示用户改用上传（录音需更复杂的线程管理）
+        """开始 / 停止 录音（切换式）。"""
         if self.btn_record.isChecked():
-            QMessageBox.information(
-                self, "录音",
-                "录音功能请使用命令行或后续版本。当前请使用「上传音频」分析已有文件。",
-            )
+            self._start_recording()
+        else:
+            self._stop_recording_and_analyze()
+
+    def _resolve_recorder_device(self):
+        """从设备下拉框解析设备 id（返回 int 或 None）。"""
+        text = self.device_combo.currentText()
+        if text and ":" in text:
+            try:
+                # 文本格式 "id: name"，取冒号前整数
+                return int(text.split(":", 1)[0].strip())
+            except ValueError:
+                return None
+        return None
+
+    def _start_recording(self) -> None:
+        """开始录音。"""
+        if self.manager is None:
+            QMessageBox.warning(self, "未就绪", "模型尚未加载完成，请稍候。")
             self.btn_record.setChecked(False)
+            return
+
+        audio_cfg = self.config["audio"]
+        device = self._resolve_recorder_device()
+        try:
+            self.recorder = AudioRecorder(
+                sr=int(audio_cfg["sample_rate"]),
+                channels=1,
+                chunk_size=int(audio_cfg["chunk_size"]),
+                device=device,
+            )
+            self.recorder.start()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("录音启动失败")
+            QMessageBox.critical(self, "录音失败",
+                                 f"无法启动录音：{e}\n请检查麦克风设备与系统权限设置。")
+            self.recorder = None
+            self.btn_record.setChecked(False)
+            return
+
+        self.is_recording = True
+        self.btn_record.setText("■ 停止录音")
+        # 录音中禁用上传，避免并发冲突
+        self.btn_upload.setEnabled(False)
+        self.btn_generate.setEnabled(False)
+        self.record_elapsed_label.setText("已录制：0.0 秒")
+        self.status_block.set_status("录音中…")
+        # 每 100ms 刷新计时显示
+        self.record_timer.start(100)
+
+    def _stop_recording_and_analyze(self) -> None:
+        """停止录音，落盘临时 WAV 并触发分析。"""
+        self.record_timer.stop()
+        if self.recorder is None or not self.is_recording:
+            return
+        self.is_recording = False
+        self.btn_record.setText("开始录音")
+        self.btn_upload.setEnabled(True)
+
+        waveform = self.recorder.stop()
+        sr = self.recorder.sr
+        elapsed = self.recorder.elapsed()
+        self.recorder = None
+
+        if len(waveform) == 0:
+            self.status_block.set_status("就绪")
+            QMessageBox.warning(self, "录音为空", "未采集到音频数据，请检查麦克风。")
+            return
+
+        # 过短录音（<0.5s）视为无效
+        if elapsed < 0.5:
+            self.status_block.set_status("就绪")
+            QMessageBox.warning(self, "录音过短", "录音时长不足 0.5 秒，请重新录制。")
+            return
+
+        # 落盘临时 WAV（便携目录下），再交给分析 worker（接受文件路径）
+        portable.TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tmp_wav = portable.TEMP_DIR / f"rec_{ts}.wav"
+        save_wav(waveform, sr, tmp_wav)
+        logger.info("录音已落盘: %s（%.2fs）", tmp_wav, elapsed)
+        self.status_block.set_status(f"录音完成（{elapsed:.1f}s），开始分析…")
+        self._start_analysis(str(tmp_wav), source="record")
+
+    def _update_record_elapsed(self) -> None:
+        """刷新录音计时显示，到上限自动停止。"""
+        if self.recorder is None or not self.is_recording:
+            return
+        elapsed = self.recorder.elapsed()
+        max_dur = float(self.config["audio"]["record_duration_max"])
+        self.record_elapsed_label.setText(f"已录制：{elapsed:.1f} 秒（上限 {max_dur:.0f}s）")
+        if elapsed >= max_dur:
+            logger.info("达到录音时长上限 %.0fs，自动停止", max_dur)
+            self.btn_record.setChecked(False)
+            self._stop_recording_and_analyze()
 
     def on_upload_clicked(self) -> None:
         if self.manager is None:
@@ -281,9 +385,20 @@ class MainWindow(QMainWindow):
             "音频文件 (*.wav *.mp3 *.flac *.ogg *.m4a)",
         )
         if path:
-            self._start_analysis(path)
+            self._start_analysis(path, source="upload")
 
     def on_reset_clicked(self) -> None:
+        # 若正在录音，先停止（不触发分析）
+        if self.is_recording:
+            self.record_timer.stop()
+            if self.recorder is not None:
+                self.recorder.stop()
+                self.recorder = None
+            self.is_recording = False
+            self.btn_record.setText("开始录音")
+            self.btn_record.setChecked(False)
+            self.btn_upload.setEnabled(True)
+            self.record_elapsed_label.setText("已录制：0.0 秒")
         self.player.stop()
         self.last_result = None
         self.last_stimulus = None
@@ -295,7 +410,9 @@ class MainWindow(QMainWindow):
         for b in (self.btn_play, self.btn_pause, self.btn_stop, self.btn_save):
             b.setEnabled(False)
 
-    def _start_analysis(self, audio_path: str) -> None:
+    def _start_analysis(self, audio_path: str, source: str = "upload") -> None:
+        self._pending_audio_path = audio_path
+        self._pending_source = source
         self.status_block.set_status("分析中…")
         self.btn_generate.setEnabled(False)
         self.analysis_worker = AnalysisWorker(self.manager, audio_path)
@@ -331,9 +448,20 @@ class MainWindow(QMainWindow):
 
         self.btn_generate.setEnabled(True)
 
-        # 存入历史
+        # 存入历史（录制的音频归档到 history/audio，上传的仅记录路径）
         try:
-            self._save_to_history(result, audio_path=None)
+            audio_path = getattr(self, "_pending_audio_path", None)
+            source = getattr(self, "_pending_source", "upload")
+            if source == "record" and audio_path:
+                # 把临时录音归档到 history/audio
+                import numpy as np
+                import soundfile as sf
+                y, sr = sf.read(audio_path)
+                archived = self.history.save_audio(
+                    np.ascontiguousarray(y.astype(np.float32)), sr, kind="rec"
+                )
+                audio_path = str(archived)
+            self._save_to_history(result, audio_path=audio_path, source=source)
         except HistoryFull:
             QMessageBox.warning(self, "历史记录已满",
                                 f"已达上限（{self.history.max_records} 条），请先导出并清空。")
@@ -408,9 +536,9 @@ class MainWindow(QMainWindow):
             "<p>协议：Apache License 2.0</p>",
         )
 
-    def _save_to_history(self, result: dict, audio_path) -> None:
+    def _save_to_history(self, result: dict, audio_path, source: str = "upload") -> None:
         record = {
-            "source": "upload" if audio_path else "analysis",
+            "source": source,
             "audio_path": str(audio_path) if audio_path else None,
             "duration": result.get("duration"),
             "negative": result["negative"],
@@ -428,6 +556,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         try:
+            if self.is_recording:
+                self.record_timer.stop()
+                if self.recorder is not None:
+                    self.recorder.stop()
             self.player.stop()
             if self.manager is not None:
                 self.manager.unload_all()

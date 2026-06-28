@@ -5,6 +5,7 @@
 ## [Unreleased] - 2026-06-28
 
 ### 已新增（核心功能）
+- **实时录音**：GUI「开始录音」按钮接通完整流程（开始/停止/实时计时/设备选择/到上限自动停止/录音→落盘→分析衔接）。
 - **端到端分析管线**：音频 → VAD/ASR → 6 模态特征 → 加权融合 → 象限判定 → 标准化输出。
 - **4 个预训练模型**（GPU NF4/FP16）：Paraformer-large ASR、emotion2vec_plus_large、PANNs CNN10（自行实现架构）、Qwen3-1.7B LLM。
 - **6 模态特征提取**：声学情感、韵律（parselmouth）、副语言事件（PANNs）、物理声学（librosa）、文本语义（Qwen3 few-shot）、文本统计（jieba + 内置情感词表）。
