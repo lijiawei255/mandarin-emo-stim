@@ -222,3 +222,10 @@ __marimo__/
 #   design notes, work-in-progress documentation). These are not essential to
 #   the open-source project and may confuse other developers.
 process_plan/
+
+# 便携数据目录：模型文件、用户录音、历史记录、日志等（含隐私/大文件，绝不提交）
+portable_data/
+
+# pytest 缓存
+.pytest_cache/
+
