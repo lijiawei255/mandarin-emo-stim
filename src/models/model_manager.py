@@ -51,6 +51,11 @@ class ModelManager:
     def load_all(self, progress_cb: ProgressCallback | None = None) -> None:
         """加载全部 4 个模型。"""
         self.resolve_device()
+        # 关键：禁用 FunASR 模型自带的 requirements.txt 自动安装。
+        # 这些文件（如 emotion2vec 的 funasr==1.0.27）会触发 FunASR 在加载时
+        # 自动 pip install，从而升级 funasr/torch，破坏已锁定的 CUDA 环境，
+        # 导致 GPU 推理崩溃（torch 2.3.1+cu121 被覆盖为非 CUDA 版）。
+        self._disable_funasr_auto_requirements()
         stages = [
             ("ASR (Paraformer)", self._load_asr),
             ("emotion2vec", self._load_emotion),
@@ -69,6 +74,28 @@ class ModelManager:
         self._loaded = True
         if progress_cb:
             progress_cb("全部就绪", 100)
+
+    @staticmethod
+    def _disable_funasr_auto_requirements() -> None:
+        """禁用 FunASR 下载模型自带的 requirements.txt 自动安装。
+
+        FunASR 加载模型时会检查 requirements.txt 并自动 ``pip install`` 其中
+        指定的版本（如 emotion2vec 的 ``funasr==1.0.27``），这会升级 funasr 并
+        连带升级 torch，破坏项目已锁定的 CUDA 环境（torch 2.3.1+cu121 被覆盖
+        为非 CUDA 版），导致 GPU 推理崩溃。
+
+        由于 FunASR 在每次 ``AutoModel`` 调用时都会重建 requirements.txt，
+        靠删除文件无法可靠阻止。本方法直接 monkeypatch
+        ``funasr.utils.install_model_requirements.install_requirements`` 为空操作，
+        从根源上阻止自动安装。模型在当前锁定的 funasr 版本下可正常加载，
+        requirements 仅是版本建议。
+        """
+        try:
+            from funasr.utils import install_model_requirements
+            install_model_requirements.install_requirements = lambda *a, **k: None
+            logger.info("已禁用 FunASR 模型自动 requirements 安装（monkeypatch）")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("禁用 FunASR 自动安装失败（非致命）: %s", e)
 
     def _load_asr(self):
         from src.models.asr_model import ASRModel
