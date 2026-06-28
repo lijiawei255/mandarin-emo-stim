@@ -25,24 +25,52 @@ logger = logging.getLogger("mandarin_emo_stim.downloader")
 PANNS_CHECKPOINT_URL = (
     "https://zenodo.org/record/3987831/files/Cnn10_mAP%3D0.380.pth"
 )
-PANNS_CHECKPOINT_SIZE = 30  # MB（约，用于校验下限）
+# 实际 Cnn10 checkpoint 大小约 24MB（25237595 字节）。校验窗口用 [20, 30]MB：
+# 小于 20MB 视为截断/损坏（重新下载），在此区间内视为完整。
+PANNS_CHECKPOINT_MIN_BYTES = 20 * 1024 * 1024
+PANNS_CHECKPOINT_MAX_BYTES = 30 * 1024 * 1024
 
 ProgressCallback = Callable[[str, int], None]
 
 
+def _is_valid_checkpoint(path: Path) -> bool:
+    """检查 checkpoint 文件大小是否在合法区间（排除截断/损坏文件）。"""
+    if not path.exists():
+        return False
+    size = path.stat().st_size
+    return PANNS_CHECKPOINT_MIN_BYTES <= size <= PANNS_CHECKPOINT_MAX_BYTES
+
+
 def download_panns_checkpoint(progress_cb: ProgressCallback | None = None) -> Path:
     """下载 PANNs CNN10 checkpoint 到 ``portable_data/models/panns/``。
+
+    若已存在且大小合法则跳过；否则（含截断/损坏文件）重新下载。
 
     Returns:
         checkpoint 文件路径。
     """
     portable.PANNS_DIR.mkdir(parents=True, exist_ok=True)
     dest = portable.PANNS_DIR / "Cnn10_mAP=0.380.pth"
-    if dest.exists() and dest.stat().st_size > PANNS_CHECKPOINT_SIZE * 1024 * 1024:
-        logger.info("PANNs checkpoint 已存在，跳过下载: %s", dest)
+    if _is_valid_checkpoint(dest):
+        logger.info("PANNs checkpoint 已存在且完整，跳过下载: %s", dest)
         return dest
 
+    # 截断/损坏文件：删除后重下（断点续传可能基于损坏的部分）
+    if dest.exists():
+        logger.warning("PANNs checkpoint 大小异常（%d 字节），删除后重新下载",
+                       dest.stat().st_size)
+        try:
+            dest.unlink()
+        except OSError:
+            pass
+
     _download_with_retry(PANNS_CHECKPOINT_URL, dest, progress_cb, "PANNs")
+    # 下载后校验完整性
+    if not _is_valid_checkpoint(dest):
+        raise RuntimeError(
+            f"PANNs checkpoint 下载后大小校验失败（{dest.stat().st_size} 字节），"
+            f"文件可能损坏。请检查网络后重试。"
+        )
     return dest
 
 

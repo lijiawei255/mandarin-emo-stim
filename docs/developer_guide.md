@@ -83,6 +83,34 @@ pytest -q                       # 全部(含集成,默认跳过标记项)
 
 测试夹具音频：`tests/fixtures/mandarin_sample.wav`（Wikimedia Commons，Public Domain）。
 
+`tests/test_robustness.py` 覆盖异常场景：配置缺失键、OOM 检测、checkpoint 截断、播放器线程安全、CLI 错误、并发 DB 写、边界值输入。
+
+## 6. 健壮性设计（异常处理约定）
+
+项目遵循「任何异常场景下程序不崩溃，状态可回滚，向用户输出明确错误信息，并记录详细日志」的原则。二次开发请遵循：
+
+### 6.1 中断与退出
+- **Ctrl+C / SIGTERM**：`app.py::_install_crash_handlers` 注册信号处理器，优雅退出（触发 closeEvent 清理）。靠 200ms `QTimer` 唤醒 Python 检查信号（否则 Qt 事件循环不处理 SIGINT）。
+- **未捕获异常**：`sys.excepthook` 兜底，弹窗 + `logger.critical` 记录。
+- **工作线程中断**：所有 `QThread` worker 在各阶段轮询 `isInterruptionRequested()`，中断时 `raise InterruptedError` 干净退出并发出 `interrupted` 信号。**新增 worker 时务必检查中断。**
+- **closeEvent**：对运行中的 worker 调 `quit()` + `wait(timeout)`，否则 `QThread: Destroyed while running` 崩溃。
+
+### 6.2 并发
+- **防重复触发**：耗时操作（分析）启动时禁用相关按钮，结束时（成功/失败/中断三路）恢复。`_start_analysis` 检查 `isRunning()` 拒绝并发。
+- **音频回调线程安全**：`AudioPlayer` 的 `set_volume`/`pause`/`resume`/`stop` 都在 `self._lock` 内修改状态（音频回调线程会读这些字段）。**新增共享状态务必加锁。**
+- **worker 强引用**：所有 worker 存为 `self.xxx_worker`（防 GC 导致线程被销毁）。
+
+### 6.3 资源异常
+- **OOM 降级**：`ModelManager.load_all` 捕获 `cuda.OutOfMemoryError`/`RuntimeError`(memory) 后 `_switch_device_to_cpu()` 重试。`_is_oom_like` 判定可降级异常。
+- **文件 I/O**：GUI 线程的所有 `sf.write`/`save_wav`/`export` 用 `try/except OSError` 包裹，失败弹窗提示（磁盘满/锁文件），不崩溃。
+- **模型下载**：`downloader.py` 校验文件完整性（PANNs checkpoint 大小窗口 [20,30]MB），截断/损坏自动重下；3 次指数退避重试。
+
+### 6.4 异常输入
+- **配置校验**：`config_loader.load_settings` 验证 `settings.json` 必需键（见 `_REQUIRED_SETTINGS`），缺失抛 `ConfigError`。**新增配置项时同步更新该校验表。**
+- **数值边界**：`zscore_normalize` 处理 inf/极端值；`WeightedFusion._normalize` 防除零；刺激生成钳制 valence/arousal 到 [0,1]。
+- **空音频**：`recorder.stop()` 返回空数组时上层判空提示；`prosody/physical` 对静音/极短音频返回中性默认值。
+
+
 ## 6. 便携模式与开源合规
 
 - **所有运行时数据**（模型、录音、历史、日志）位于 `portable_data/`，已被 gitignore 排除。

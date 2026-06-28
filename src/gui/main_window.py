@@ -272,6 +272,7 @@ class MainWindow(QMainWindow):
         self.model_worker.progress.connect(self._on_model_progress)
         self.model_worker.finished_ok.connect(self._on_models_loaded)
         self.model_worker.failed.connect(self._on_model_failed)
+        self.model_worker.interrupted.connect(self._on_model_interrupted)
         self.model_worker.start()
 
     def _on_model_progress(self, stage: str, pct: int) -> None:
@@ -287,7 +288,15 @@ class MainWindow(QMainWindow):
         self.status_block.set_model_progress(manager.loaded_count, 4)
         # 隐藏浮层
         self.loading_overlay.show_done()
+        self.btn_record.setEnabled(True)
+        self.btn_upload.setEnabled(True)
         self.btn_generate.setEnabled(False)  # 待分析完成
+
+    def _on_model_interrupted(self) -> None:
+        self.status_block.set_status("模型加载已中断")
+        self.loading_overlay.show_failed("用户中断了模型加载")
+        self.btn_record.setEnabled(False)
+        self.btn_upload.setEnabled(False)
 
     def _on_model_failed(self, msg: str) -> None:
         self.status_block.set_status("模型加载失败")
@@ -390,7 +399,14 @@ class MainWindow(QMainWindow):
         from datetime import datetime
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         tmp_wav = portable.TEMP_DIR / f"rec_{ts}.wav"
-        save_wav(waveform, sr, tmp_wav)
+        try:
+            save_wav(waveform, sr, tmp_wav)
+        except OSError as e:
+            logger.exception("录音落盘失败")
+            self.status_block.set_status("就绪")
+            QMessageBox.critical(self, "保存失败",
+                                 f"录音无法保存：{e}\n可能是磁盘已满或目录无写权限。")
+            return
         logger.info("录音已落盘: %s（%.2fs）", tmp_wav, elapsed)
         self.status_block.set_status(f"录音完成（{elapsed:.1f}s），开始分析…")
         self._start_analysis(str(tmp_wav), source="record")
@@ -442,17 +458,34 @@ class MainWindow(QMainWindow):
             b.setEnabled(False)
 
     def _start_analysis(self, audio_path: str, source: str = "upload") -> None:
+        # 并发防护：若已有分析在运行，拒绝重复触发（避免孤儿线程崩溃）
+        if self.analysis_worker is not None and self.analysis_worker.isRunning():
+            logger.warning("已有分析任务在运行，忽略重复触发")
+            return
         self._pending_audio_path = audio_path
         self._pending_source = source
         self.status_block.set_status("分析中…")
+        # 分析期间禁用所有输入按钮，防止并发状态污染
         self.btn_generate.setEnabled(False)
+        self.btn_record.setEnabled(False)
+        self.btn_upload.setEnabled(False)
         self.analysis_worker = AnalysisWorker(self.manager, audio_path)
         self.analysis_worker.progress.connect(
             lambda s, p: self.status_block.set_status(f"分析：{s} {p}%")
         )
         self.analysis_worker.finished_ok.connect(self._on_analysis_done)
         self.analysis_worker.failed.connect(self._on_analysis_failed)
+        self.analysis_worker.interrupted.connect(self._on_analysis_interrupted)
         self.analysis_worker.start()
+
+    def _reenable_input_buttons(self) -> None:
+        """分析结束（成功/失败/中断）后恢复输入按钮。"""
+        self.btn_record.setEnabled(True)
+        self.btn_upload.setEnabled(True)
+
+    def _on_analysis_interrupted(self) -> None:
+        self.status_block.set_status("已中断")
+        self._reenable_input_buttons()
 
     def _on_analysis_done(self, result: dict) -> None:
         self.last_result = result
@@ -478,6 +511,7 @@ class MainWindow(QMainWindow):
         self.modal_bars.update_events(result.get("paralang_events", []))
 
         self.btn_generate.setEnabled(True)
+        self._reenable_input_buttons()
 
         # 存入历史（录制的音频归档到 history/audio，上传的仅记录路径）
         try:
@@ -496,9 +530,14 @@ class MainWindow(QMainWindow):
         except HistoryFull:
             QMessageBox.warning(self, "历史记录已满",
                                 f"已达上限（{self.history.max_records} 条），请先导出并清空。")
+        except OSError as e:
+            # 历史/音频归档失败不阻塞结果展示，仅记录日志
+            logger.exception("历史记录写入失败")
+            self.snr_warning.setText(f"⚠ 历史记录保存失败：{e}")
 
     def _on_analysis_failed(self, msg: str) -> None:
         self.status_block.set_status("分析失败")
+        self._reenable_input_buttons()
         QMessageBox.critical(self, "分析失败", msg)
 
     def on_generate_clicked(self) -> None:
@@ -543,16 +582,27 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "保存刺激音频", "stimulus.wav",
                                               "WAV (*.wav)")
         if path:
-            import soundfile as sf
-            sf.write(path, self.last_stimulus, self.player.sr, subtype="PCM_16")
+            try:
+                import soundfile as sf
+                sf.write(path, self.last_stimulus, self.player.sr, subtype="PCM_16")
+                QMessageBox.information(self, "保存成功", f"已保存到：{path}")
+            except OSError as e:
+                logger.exception("刺激音频保存失败")
+                QMessageBox.critical(self, "保存失败",
+                                     f"无法保存：{e}\n可能是磁盘已满或路径无写权限。")
 
     def on_export_history(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "导出历史记录", "history.json",
                                               "JSON (*.json);;CSV (*.csv)")
         if path:
             fmt = "csv" if path.lower().endswith(".csv") else "json"
-            self.history.export(Path(path), fmt=fmt)
-            QMessageBox.information(self, "导出完成", f"已导出到：{path}")
+            try:
+                self.history.export(Path(path), fmt=fmt)
+                QMessageBox.information(self, "导出完成", f"已导出到：{path}")
+            except OSError as e:
+                logger.exception("历史记录导出失败")
+                QMessageBox.critical(self, "导出失败",
+                                     f"无法导出：{e}\n可能是磁盘已满或路径无写权限。")
 
     def on_about(self) -> None:
         QMessageBox.about(

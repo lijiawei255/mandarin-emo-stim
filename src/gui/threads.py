@@ -23,16 +23,26 @@ class ModelLoadWorker(QThread):
     progress = Signal(str, int)   # (阶段名, 进度%)
     finished_ok = Signal(object)  # ModelManager
     failed = Signal(str)
+    interrupted = Signal()        # 用户中断
 
     def __init__(self, config: dict | None = None, parent=None):
         super().__init__(parent)
         self.config = config
 
     def run(self) -> None:
+        def _cb(stage: str, pct: int) -> None:
+            # 用户请求中断时抛出，终止加载（在各阶段之间检查）
+            if self.isInterruptionRequested():
+                raise InterruptedError()
+            self.progress.emit(stage, pct)
+
         try:
             mgr = ModelManager(config=self.config)
-            mgr.load_all(progress_cb=lambda s, p: self.progress.emit(s, p))
+            mgr.load_all(progress_cb=_cb)
             self.finished_ok.emit(mgr)
+        except InterruptedError:
+            logger.info("模型加载被用户中断")
+            self.interrupted.emit()
         except Exception as e:  # noqa: BLE001
             logger.exception("模型加载失败")
             self.failed.emit(str(e))
@@ -43,6 +53,7 @@ class AnalysisWorker(QThread):
     progress = Signal(str, int)
     finished_ok = Signal(dict)   # 分析结果
     failed = Signal(str)
+    interrupted = Signal()
 
     def __init__(self, manager: ModelManager, audio_path: str, parent=None):
         super().__init__(parent)
@@ -50,13 +61,18 @@ class AnalysisWorker(QThread):
         self.audio_path = audio_path
 
     def run(self) -> None:
+        def _cb(stage: str, pct: int) -> None:
+            if self.isInterruptionRequested():
+                raise InterruptedError()
+            self.progress.emit(stage, pct)
+
         try:
             pipeline = AnalysisPipeline(self.manager)
-            result = pipeline.analyze(
-                self.audio_path,
-                progress_cb=lambda s, p: self.progress.emit(s, p),
-            )
+            result = pipeline.analyze(self.audio_path, progress_cb=_cb)
             self.finished_ok.emit(result)
+        except InterruptedError:
+            logger.info("分析被用户中断")
+            self.interrupted.emit()
         except Exception as e:  # noqa: BLE001
             logger.exception("分析失败")
             self.failed.emit(str(e))

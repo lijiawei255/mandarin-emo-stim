@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
 # 触发便携环境重定向
 from src import portable  # noqa: F401
+
+logger = logging.getLogger("mandarin_emo_stim.cli")
 from src.models.model_manager import ModelManager
 from src.pipeline import AnalysisPipeline
 from src.stimulus.generator import StimulusGenerator
@@ -34,46 +37,64 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", default=None, help="把完整结果写入该 JSON 文件")
     args = parser.parse_args(argv)
 
-    print("=== 加载模型 ===", flush=True)
-    manager = ModelManager()
-    manager.load_all(progress_cb=_progress)
+    manager = None
+    try:
+        print("=== 加载模型 ===", flush=True)
+        manager = ModelManager()
+        manager.load_all(progress_cb=_progress)
 
-    print("=== 分析音频 ===", flush=True)
-    pipeline = AnalysisPipeline(manager)
-    result = pipeline.analyze(args.audio, progress_cb=_progress)
+        print("=== 分析音频 ===", flush=True)
+        pipeline = AnalysisPipeline(manager)
+        result = pipeline.analyze(args.audio, progress_cb=_progress)
 
-    print("\n=== 量化指标 ===", flush=True)
-    print(f"  Negative Score : {result['negative']:.3f}")
-    print(f"  Valence        : {result['valence']:.3f}")
-    print(f"  Arousal        : {result['arousal']:.3f}")
-    print(f"  主象限         : {result['dominant_quadrant']}")
-    print(f"  ASR 文本       : {result['asr_text']}")
-    print(f"  音频质量 SNR   : {result['audio_quality']['snr_db']:.1f} dB")
-    print(f"  有效时长       : {result['duration']:.2f} s")
+        print("\n=== 量化指标 ===", flush=True)
+        print(f"  Negative Score : {result['negative']:.3f}")
+        print(f"  Valence        : {result['valence']:.3f}")
+        print(f"  Arousal        : {result['arousal']:.3f}")
+        print(f"  主象限         : {result['dominant_quadrant']}")
+        print(f"  ASR 文本       : {result['asr_text']}")
+        print(f"  音频质量 SNR   : {result['audio_quality']['snr_db']:.1f} dB")
+        print(f"  有效时长       : {result['duration']:.2f} s")
 
-    print("\n=== 生成声刺激 ===", flush=True)
-    generator = StimulusGenerator()
-    stim = generator.generate(
-        result["valence"], result["arousal"],
-        memberships=result["memberships"], duration=args.duration,
-    )
-    out_path = args.out or str(portable.HISTORY_STIMULI_DIR / "cli_output.wav")
-    portable.HISTORY_STIMULI_DIR.mkdir(parents=True, exist_ok=True)
-    import soundfile as sf
-    sf.write(out_path, stim, generator.sr, subtype="PCM_16")
-    print(f"  刺激音频已保存: {out_path}", flush=True)
-
-    if args.json:
-        serializable = {k: v for k, v in result.items()
-                        if not isinstance(v, (bytes,))}
-        Path(args.json).write_text(
-            json.dumps(serializable, ensure_ascii=False, indent=2, default=str),
-            encoding="utf-8",
+        print("\n=== 生成声刺激 ===", flush=True)
+        generator = StimulusGenerator()
+        stim = generator.generate(
+            result["valence"], result["arousal"],
+            memberships=result["memberships"], duration=args.duration,
         )
-        print(f"  结果已写入: {args.json}", flush=True)
+        out_path = args.out or str(portable.HISTORY_STIMULI_DIR / "cli_output.wav")
+        portable.HISTORY_STIMULI_DIR.mkdir(parents=True, exist_ok=True)
+        import soundfile as sf
+        sf.write(out_path, stim, generator.sr, subtype="PCM_16")
+        print(f"  刺激音频已保存: {out_path}", flush=True)
 
-    manager.unload_all()
-    return 0
+        if args.json:
+            serializable = {k: v for k, v in result.items()
+                            if not isinstance(v, (bytes,))}
+            Path(args.json).write_text(
+                json.dumps(serializable, ensure_ascii=False, indent=2, default=str),
+                encoding="utf-8",
+            )
+            print(f"  结果已写入: {args.json}", flush=True)
+
+        if manager is not None:
+            manager.unload_all()
+        return 0
+
+    except KeyboardInterrupt:
+        print("\n[中断] 用户中断（Ctrl+C），正在退出…", flush=True)
+        if manager is not None:
+            manager.unload_all()
+        return 130  # Unix 惯例：128+SIGINT(2)
+    except FileNotFoundError as e:
+        print(f"\n[错误] 文件不存在：{e}", flush=True)
+        return 1
+    except Exception as e:  # noqa: BLE001
+        logger.exception("CLI 运行失败")
+        print(f"\n[错误] {type(e).__name__}: {e}", flush=True)
+        if manager is not None:
+            manager.unload_all()
+        return 1
 
 
 if __name__ == "__main__":

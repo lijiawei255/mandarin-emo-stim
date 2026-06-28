@@ -4,6 +4,28 @@
 
 ## [Unreleased] - 2026-06-28
 
+### 健壮性提升（异常场景不崩溃 + 状态可回滚 + 明确错误提示）
+
+**用户中断与强制退出**
+- SIGINT(Ctrl+C)/SIGTERM 优雅退出：注册信号处理器 + 200ms 定时器唤醒 Python 信号检查（解决模型加载期间 Ctrl+C 无响应）+ sys.excepthook 未捕获异常兜底。
+- 工作线程中断支持：ModelLoadWorker/AnalysisWorker 在各阶段轮询 `isInterruptionRequested()`，中断时干净退出并发出 `interrupted` 信号（不再 QThread destroyed 崩溃）。
+- closeEvent 安全退出：对所有运行中的 worker 调用 quit+wait，确保资源释放。
+
+**并发与竞争条件**
+- 分析期间禁用 record/upload 按钮 + 防重复 AnalysisWorker（避免孤儿线程崩溃与状态污染）。
+- AudioPlayer 的 set_volume/pause/resume 加锁（修复音频回调线程的读写竞争）。
+- recorder.record() 的 finally 不再吞异常（移除 finally 内 return）。
+- HistoryDB 多线程并发写安全（已有锁保护，补充测试覆盖）。
+
+**资源异常**
+- OOM 自动降级 CPU：load_all 捕获 cuda.OutOfMemoryError/RuntimeError(MemoryError) 后自动切换 CPU 重试（fallback_to_cpu 不再是死代码）。
+- GUI 文件 I/O 全保护：save_wav/sf.write/history.export 全部 try/except + 友好提示，磁盘满/锁文件不崩溃。
+- PANNs checkpoint 完整性校验：修正大小阈值（30MB→[20,30]MB 合法区间），截断/损坏文件自动重下，下载后校验。
+
+**异常输入与边界条件**
+- 配置 schema 校验：load_settings 验证 settings.json 必需键，缺失时抛 ConfigError（清晰错误而非启动期 KeyError）。
+- z-score 归一化处理 inf/极端值；融合全 0 分数不除零；刺激边界 valence/arousal(0/1) 不崩溃。
+
 ### 修复
 - **GUI 启动崩溃**：`recorder.py` 与 `player.py` 顶层 `import sounddevice` 导致依赖缺失时 GUI 无法 import 启动。改为延迟导入（按需加载），缺失时录音/播放静默降级并友好提示，GUI 仍能正常启动。
 

@@ -165,4 +165,7 @@ class AudioRecorder:
                     progress_cb(time.time() - t0)
                 time.sleep(0.05)
         finally:
-            return self.stop()
+            # finally 仅保证停止录制状态；不在 finally 中 return（避免吞掉
+            # try 体内的异常），在正常路径返回结果
+            self._recording = False
+        return self.stop()

@@ -49,7 +49,12 @@ class ModelManager:
         return self.device
 
     def load_all(self, progress_cb: ProgressCallback | None = None) -> None:
-        """加载全部 4 个模型。"""
+        """加载全部 4 个模型。
+
+        Args:
+            progress_cb: 进度回调 ``(stage_name, percent)``。若该回调抛出
+                :class:`InterruptedError`，加载会提前终止（用于响应用户中断）。
+        """
         self.resolve_device()
         # 关键：禁用 FunASR 模型自带的 requirements.txt 自动安装。
         # 这些文件（如 emotion2vec 的 funasr==1.0.27）会触发 FunASR 在加载时
@@ -64,16 +69,54 @@ class ModelManager:
         ]
         n = len(stages)
         for i, (name, loader) in enumerate(stages):
+            # 中断检查：progress_cb 可抛 InterruptedError 终止加载
             if progress_cb:
                 progress_cb(name, int(i / n * 100))
             try:
                 loader()
+            except InterruptedError:
+                logger.info("模型加载被用户中断（已完成 %d/%d）", i, n)
+                raise
+            except (RuntimeError, MemoryError, OSError) as e:
+                # OOM / CUDA 错误：尝试降级到 CPU 一次后重试该模型
+                if self.device == "cuda" and self._is_oom_like(e):
+                    logger.warning("加载 %s 时显存不足(%s)，尝试降级到 CPU…", name, e)
+                    self._switch_device_to_cpu()
+                    loader()  # 重试一次（CPU 模式）
+                else:
+                    logger.error("加载 %s 失败: %s", name, e)
+                    raise
             except Exception as e:  # noqa: BLE001
                 logger.error("加载 %s 失败: %s", name, e)
                 raise
         self._loaded = True
         if progress_cb:
             progress_cb("全部就绪", 100)
+
+    @staticmethod
+    def _is_oom_like(exc: Exception) -> bool:
+        """判断异常是否为显存/内存不足类（可降级 CPU 重试）。"""
+        msg = str(exc).lower()
+        return ("out of memory" in msg or "cuda" in msg and "memory" in msg
+                or isinstance(exc, MemoryError))
+
+    def _switch_device_to_cpu(self) -> None:
+        """切换到 CPU 模式（卸载已加载模型，重置设备）。"""
+        import gc
+        # 卸载已加载的模型
+        for attr in ("_asr", "_emotion", "_pann", "_llm"):
+            setattr(self, attr, None)
+        self._loaded = False
+        gc.collect()
+        try:
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+        self.device = "cpu"
+        self.config["models"]["device"] = "cpu"
+        self.config["models"]["asr_device"] = "cpu"
+        logger.warning("已切换到 CPU 推理模式")
 
     @staticmethod
     def _disable_funasr_auto_requirements() -> None:

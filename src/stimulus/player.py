@@ -108,14 +108,19 @@ class AudioPlayer(QObject):
             self.playback_finished.emit()
 
     def pause(self) -> None:
-        self._paused = True
+        with self._lock:
+            self._paused = True
 
     def resume(self) -> None:
-        self._paused = False
+        with self._lock:
+            self._paused = False
 
     def stop(self) -> None:
-        self._playing = False
-        self._paused = False
+        with self._lock:
+            self._playing = False
+            self._paused = False
+            self._position = 0.0
+        # 流的 stop/close 可能耗时，放在锁外
         if self._stream is not None:
             try:
                 self._stream.stop()
@@ -123,11 +128,11 @@ class AudioPlayer(QObject):
             except Exception:
                 pass
             self._stream = None
-        self._position = 0.0
 
     def set_volume(self, volume: float) -> None:
-        """设置音量 [0,1]。"""
-        self._volume = max(0.0, min(1.0, float(volume)))
+        """设置音量 [0,1]（线程安全：音频回调线程会读 _volume）。"""
+        with self._lock:
+            self._volume = max(0.0, min(1.0, float(volume)))
 
     def is_playing(self) -> bool:
         return self._playing and not self._paused
