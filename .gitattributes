@@ -1,0 +1,16 @@
+# 统一换行符处理（开源仓库跨平台协作友好）
+* text=auto eol=lf
+
+# 二进制文件不做换行符转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.flac binary
+*.ttf binary
+*.otf binary
+*.db binary

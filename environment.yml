@@ -1,0 +1,14 @@
+name: mandarin-emo-stim
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10.14
+  - pytorch=2.3.1
+  - torchaudio=2.3.1
+  - pytorch-cuda=12.1
+  - ffmpeg
+  - pip
+  - pip:
+      - -r requirements.txt

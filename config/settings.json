@@ -1,0 +1,65 @@
+{
+  "fusion_weights": {
+    "negative": {
+      "acoustic": 0.30,
+      "prosody": 0.15,
+      "paralang": 0.10,
+      "physical": 0.05,
+      "text_llm": 0.30,
+      "text_stat": 0.10
+    },
+    "arousal": {
+      "acoustic": 0.35,
+      "prosody": 0.25,
+      "paralang": 0.15,
+      "physical": 0.10,
+      "text_llm": 0.10,
+      "text_stat": 0.05
+    }
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "record_duration_max": 60,
+    "chunk_size": 1024,
+    "stimulus_sample_rate": 44100,
+    "stimulus_channels": 2,
+    "stimulus_duration_sec": 30,
+    "stimulus_min_sec": 10,
+    "stimulus_max_sec": 120
+  },
+  "models": {
+    "device": "auto",
+    "asr_device": "cuda",
+    "asr_model": "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    "asr_revision": "v2.0.4",
+    "emotion_model": "iic/emotion2vec_plus_large",
+    "emotion_revision": "v2d0.0",
+    "emotion_backoff": "iic/emotion2vec_plus_base",
+    "llm_model": "Qwen/Qwen3-1.7B-Instruct",
+    "llm_gguf_model": "qwen3-1.7b-instruct-q4_k_m.gguf",
+    "panns_checkpoint": "Cnn10_mAP=0.380.pth",
+    "use_gguf_on_mps": true,
+    "max_new_tokens": 16
+  },
+  "thresholds": {
+    "snr_warning_db": 10,
+    "snr_weight_floor": 0.3,
+    "paralang_confidence_threshold": 0.3,
+    "paralang_boost_threshold": 0.8,
+    "asr_confidence_threshold": 0.5,
+    "quadrant_mid_v": 0.5,
+    "quadrant_mid_a": 0.5,
+    "quadrant_band": 0.05
+  },
+  "stimulus": {
+    "max_peak_dbfs": -10,
+    "fade_ms": 50,
+    "crossfade_ms": 200,
+    "haas_delay_ms": 12
+  },
+  "history": {
+    "max_records": 200,
+    "auto_export_on_clear": true
+  }
+}

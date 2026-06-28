@@ -1,0 +1,14 @@
+{
+  "emotion_classes": [
+    {"id": 0, "name_en": "angry", "name_zh": "生气", "n_base": 0.90, "a_base": 0.90},
+    {"id": 1, "name_en": "disgusted", "name_zh": "厌恶", "n_base": 0.80, "a_base": 0.70},
+    {"id": 2, "name_en": "fearful", "name_zh": "恐惧", "n_base": 0.85, "a_base": 0.95},
+    {"id": 3, "name_en": "happy", "name_zh": "开心", "n_base": 0.10, "a_base": 0.75},
+    {"id": 4, "name_en": "neutral", "name_zh": "中性", "n_base": 0.50, "a_base": 0.40},
+    {"id": 5, "name_en": "other", "name_zh": "其他", "n_base": 0.50, "a_base": 0.50},
+    {"id": 6, "name_en": "sad", "name_zh": "悲伤", "n_base": 0.80, "a_base": 0.20},
+    {"id": 7, "name_en": "surprised", "name_zh": "惊讶", "n_base": 0.55, "a_base": 0.90},
+    {"id": 8, "name_en": "unknown", "name_zh": "未知", "n_base": 0.50, "a_base": 0.50, "downweight": true}
+  ],
+  "unknown_downweight_factor": 0.5
+}

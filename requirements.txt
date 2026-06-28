@@ -1,0 +1,31 @@
+# Mandarin-EmoStim 依赖列表
+#
+# 注意：
+# 1. PyTorch 需按硬件单独安装（使用专属 CUDA 索引，见 README / environment.yml）：
+#      NVIDIA GPU (CUDA 12.1):  pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
+#      纯 CPU:                   pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+# 2. bitsandbytes 仅在 NVIDIA / x86 平台安装（通过环境标记排除 Apple Silicon）。
+# 3. 必须使用 Python 3.10.x（3.11/3.12 可能存在 bitsandbytes 兼容性问题）。
+
+funasr==1.0.25
+modelscope==1.14.0
+transformers==4.44.0
+accelerate==0.33.0
+bitsandbytes==0.43.3; platform_system != "Darwin" or platform_machine != "arm64"
+soundfile==0.12.1
+librosa==0.10.2.post1
+# 注：slab 官方最低版本为 0.8.0，原计划文档中的 0.2.3 不存在；1.8.2 提供了文档所需的
+# 全部 API（Sound.pinknoise / set_default_samplerate 等）。
+slab==1.8.2
+numpy==1.26.4
+scipy==1.13.1
+praat-parselmouth==0.4.5
+jieba==0.42.1
+# 注：panns-inference 最高版本为 0.1.1，原计划文档中的 0.1.3 不存在。
+panns-inference==0.1.1
+PySide6==6.7.2
+pyqtgraph==0.13.7
+sounddevice==0.4.7
+
+# 测试与开发
+pytest==8.3.3

@@ -1,0 +1,36 @@
+{
+  "quadrant_anchors": {
+    "Q1": {"f0": 600, "pr": 4.0, "loud_db": -12, "sc": 2200, "harmony": "major_triad", "attack_ms": 20, "mod_depth": 0.45, "noise_ratio": 0.05},
+    "Q2": {"f0": 280, "pr": 0.33, "loud_db": -22, "sc": 700, "harmony": "natural_harmonics", "attack_ms": 350, "mod_depth": 0.40, "noise_ratio": 0.20},
+    "Q3": {"f0": 450, "pr": 2.5, "loud_db": -15, "sc": 1400, "harmony": "major_triad", "attack_ms": 80, "mod_depth": 0.30, "noise_ratio": 0.00},
+    "Q4": {"f0": 320, "pr": 0.8, "loud_db": -20, "sc": 800, "harmony": "fifth_octave", "attack_ms": 400, "mod_depth": 0.25, "noise_ratio": 0.10}
+  },
+  "harmony_definitions": {
+    "natural_harmonics": {
+      "freq_ratios": [1.0, 2.0, 3.0, 4.0],
+      "amplitudes": [1.0, 0.5, 0.33, 0.25]
+    },
+    "major_triad": {
+      "freq_ratios": [1.0, 1.25, 1.5],
+      "amplitudes": [1.0, 0.5, 0.6]
+    },
+    "fifth_octave": {
+      "freq_ratios": [1.0, 1.5, 2.0],
+      "amplitudes": [1.0, 0.5, 0.4]
+    }
+  },
+  "adsr": {
+    "decay_ms": 50,
+    "sustain_level": 0.8,
+    "release_ms": 200
+  },
+  "mapping_ranges": {
+    "f0": {"min": 200, "max": 800},
+    "pr": {"min": 0.25, "max": 6.0},
+    "loud_db": {"min": -30, "max": -10},
+    "sc": {"min": 400, "max": 2500},
+    "attack_ms": {"min": 10, "max": 500},
+    "mod_depth": {"min": 0.0, "max": 0.60},
+    "noise_ratio": {"max": 0.25}
+  }
+}
