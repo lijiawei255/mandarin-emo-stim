@@ -311,6 +311,19 @@ class MainWindow(QMainWindow):
                 device=device,
             )
             self.recorder.start()
+        except ImportError as e:
+            # sounddevice 等录音依赖缺失
+            logger.exception("录音依赖缺失")
+            QMessageBox.critical(
+                self, "录音依赖缺失",
+                f"录音所需的依赖未安装：{e}\n\n"
+                "请确认已激活 mandarin-emo-stim 环境并执行：\n"
+                "    pip install -r requirements.txt\n\n"
+                "（不影响「上传音频」分析功能）",
+            )
+            self.recorder = None
+            self.btn_record.setChecked(False)
+            return
         except Exception as e:  # noqa: BLE001
             logger.exception("录音启动失败")
             QMessageBox.critical(self, "录音失败",

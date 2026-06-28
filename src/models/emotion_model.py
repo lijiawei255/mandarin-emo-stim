@@ -1,7 +1,25 @@
 """emotion2vec_plus_large 声学情感模型封装。
 
-输出 9 类情绪 softmax 置信度，并按 emotion_mapping.json 的基准负面分/唤醒分
-加权聚合为 (s_acoustic, a_acoustic)。unknown 置信度高时向中性收缩。
+【原理】emotion2vec 是基于数据2vec 自监督预训练的语音情感表征模型，能从原始
+波形中提取与情感相关的深层声学特征（语调、能量、节奏、音色的综合表征），并在
+9 类离散情绪上输出 softmax 置信度。
+
+【为何要映射到连续分】本项目最终输出是 Russell 情绪环模型（Circumplex Model）
+的连续 Valence-Arousal 二维坐标，而非离散类别。因此需把 9 类离散情绪「投影」
+到 V-A 平面。依据是心理学文献中各类情绪在 V-A 空间的实证锚点（见
+``config/emotion_mapping.json`` 的 n_base/a_base）：
+    - angry  : 高负高唤 (n=0.90, a=0.90)
+    - fearful: 高负极高唤 (n=0.85, a=0.95)
+    - sad    : 高负低唤 (n=0.80, a=0.20)  ← 注意唤醒低，与愤怒区分
+    - happy  : 低负(正面)高唤 (n=0.10, a=0.75)
+    - neutral: 中中 (n=0.50, a=0.40)
+    ...
+
+【聚合方式】以各情绪置信度为权重，对基准分做加权平均（softmax 置信度已归一化，
+故等价于期望值）。这比 argmax 取单类更平滑、对模糊边界更鲁棒。
+
+【unknown 收缩】当 unknown(模型不确定)置信度 > 0.5 时，把结果向中性 (0.5) 收缩
+50%，降低不确定样本的贡献权重，避免噪声主导。
 """
 
 from __future__ import annotations
@@ -16,7 +34,7 @@ logger = logging.getLogger("mandarin_emo_stim.emotion")
 
 
 class EmotionModel:
-    """emotion2vec_plus_large 封装。"""
+    """emotion2vec_plus_large 封装（9 类离散情绪 → 连续 V-A 分）。"""
 
     def __init__(self, device: str = "cuda", model: Any = None):
         self.device = device

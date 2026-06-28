@@ -86,6 +86,23 @@ See `docs/developer_guide.md` for details.
 - Stimulus peak level is capped at **-10 dBFS** (≈ 70–75 dB SPL, normal conversation volume), with no hearing-damage risk.
 - Headphones are recommended for the best experience (optional; speakers are also safe).
 
+## Algorithm overview
+
+The closed loop is grounded in **psychology + multimodal affective computing**:
+
+1. **Emotion quantification** uses Russell's circumplex model (Valence × Arousal plane).
+   Six modalities (acoustic emotion / prosody / paralinguistic / physical / text-LLM /
+   text-stats) are fused with weighted averaging, where the weights **adapt dynamically**
+   to signal quality (SNR / ASR confidence) for robustness to noise, accents, and ASR errors.
+2. **Differentiated stimuli** are generated per emotion quadrant based on empirical
+   music-psychology mappings — e.g. slow pulses to pace breathing for anxious Q2, bright
+   consonant tones to energize depressed Q3. Parameters are continuous and soft-blended
+   across quadrants to avoid abrupt transitions.
+
+Full algorithm derivations, per-modality rationale, parameter mappings, and references are in
+**[docs/research_notes.md](./docs/research_notes.md)** (in Chinese). Each module's docstring
+also has a concise explanation.
+
 ## License
 
 [Apache License 2.0](./LICENSE). Compatible with all upstream models and dependencies.

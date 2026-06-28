@@ -4,6 +4,14 @@
 
 ## [Unreleased] - 2026-06-28
 
+### 修复
+- **GUI 启动崩溃**：`recorder.py` 与 `player.py` 顶层 `import sounddevice` 导致依赖缺失时 GUI 无法 import 启动。改为延迟导入（按需加载），缺失时录音/播放静默降级并友好提示，GUI 仍能正常启动。
+
+### 文档（算法原理）
+- **代码 docstring**：为全部核心算法模块补充心理学/声学原理说明（emotion_model 离散→V-A投影、prosody 韵律情感线索、weighted_fusion 动态权重鲁棒性、quadrant 软判定、strategies 音乐心理学映射、synthesizer 心理声学信号处理、physical Sethares粗糙度、normalizer z-score、text_stats 词典加权）。
+- **docs/research_notes.md**：重写为完整算法原理总参考（Russell模型/6模态/动态权重/各模态算法/声刺激映射/归一化/局限性/10篇文献）。
+- **README**（中英）：新增「算法原理」章节，指向 research_notes。
+
 ### 已新增（核心功能）
 - **实时录音**：GUI「开始录音」按钮接通完整流程（开始/停止/实时计时/设备选择/到上限自动停止/录音→落盘→分析衔接）。
 - **端到端分析管线**：音频 → VAD/ASR → 6 模态特征 → 加权融合 → 象限判定 → 标准化输出。

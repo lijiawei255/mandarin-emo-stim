@@ -12,9 +12,19 @@ from collections import deque
 from typing import Callable
 
 import numpy as np
-import sounddevice as sd
 
 from src.config_loader import load_settings
+
+
+def _import_sd():
+    """延迟导入 sounddevice。
+
+    避免在模块顶层 import sounddevice —— 若该依赖缺失或麦克风后端异常，
+    会导致整个 GUI 在 import 阶段崩溃。改为按需导入，仅在真正录音/枚举
+    设备时检查，缺失时抛出可读的 ImportError 由上层友好提示。
+    """
+    import sounddevice as sd
+    return sd
 
 
 class AudioRecorder:
@@ -30,7 +40,7 @@ class AudioRecorder:
         self.max_duration = float(audio_cfg["record_duration_max"])
 
         self._buffer: deque[np.ndarray] = deque()
-        self._stream: sd.InputStream | None = None
+        self._stream = None  # sd.InputStream，延迟创建
         self._lock = threading.Lock()
         self._recording = False
         self._start_time: float = 0.0
@@ -41,7 +51,13 @@ class AudioRecorder:
 
         在某些中文 Windows 环境下，sounddevice 解码设备名时会抛
         ``UnicodeDecodeError``，此处捕获并回退到逐设备查询（容错）。
+        若 sounddevice 未安装，返回空列表（上层据此显示「无可用设备」）。
         """
+        try:
+            sd = _import_sd()
+        except ImportError:
+            return []
+
         result: list[dict] = []
         try:
             devs = sd.query_devices()
@@ -79,9 +95,15 @@ class AudioRecorder:
                 self._buffer.append(indata.copy())
 
     def start(self) -> None:
-        """开始录音（异步）。"""
+        """开始录音（异步）。
+
+        Raises:
+            ImportError: sounddevice 未安装。
+            Exception: 麦克风设备不可用或权限被拒。
+        """
         if self._recording:
             return
+        sd = _import_sd()  # 缺失时抛 ImportError，由上层友好提示
         self._buffer.clear()
         self._stream = sd.InputStream(
             samplerate=self.sr, channels=self.channels, dtype="float32",

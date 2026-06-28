@@ -1,10 +1,27 @@
 """韵律学特征提取（praat-parselmouth）。
 
-提取 F0 相关指标、语速估计、停顿占比、HNR、Jitter、Shimmer，并按
-项目计划文档 3.2 节的子权重公式聚合成 (负面分 s_prosody, 唤醒分 a_prosody)。
+【原理】韵律（prosody）是语音中超越音段层面的声学特征，承载了大量情感信息。
+心理学/语音学研究（如 Juslin & Laukka 2004）表明，不同情绪有可区分的韵律模式：
 
-所有原始指标通过 :mod:`src.fusion.normalizer` 的 z-score 归一化到 [0,1]，
-再按子权重加权得到最终模态分。
+  - F0（基频）均值/范围：高唤醒情绪（愤怒、恐惧、兴奋）F0 更高、范围更大；
+    低落情绪（悲伤）F0 低且平。男女混合参考 μ=180Hz, σ=50Hz。
+  - 语速（speech_rate）：焦虑/紧张常加快，抑郁常减慢。
+  - 停顿占比（pause_ratio）：犹豫、抑郁时静音段增多。
+  - HNR（谐波噪声比）：反映嗓音的「干净程度」。HNR 低=气声/粗糙，常见于
+    悲伤、紧张、压抑；HNR 高=声音清亮。故负面分用 1/HNR（越低越负面）。
+  - Jitter（基频微扰）：相邻周期 F0 的微小波动。>3% 为病理/强情绪，
+    紧张、愤怒时升高。
+  - Shimmer（振幅微扰）：相邻周期振幅的微小波动。情绪激动/疲惫时升高。
+
+【子权重聚合】按各特征对负面/唤醒的实证贡献加权（见 score()）：
+    s_prosody = 0.25·HNR_inv + 0.20·Jitter + 0.20·Shimmer
+              + 0.15·F0_drop + 0.10·Pause + 0.10·SpeechRate_low
+    a_prosody = 0.30·SpeechRate + 0.25·F0_range + 0.20·StdF0
+              + 0.15·MeanF0 + 0.10·Pause_inv
+（HNR_inv、SpeechRate_low 等为「反向」特征，详见 normalizer 注释。）
+
+所有原始指标先经 z-score 归一化到 [0,1]（参考值来自中文普通话语料统计，
+见 ``src/fusion/normalizer.py`` 的 PROSODY_STATS），再按子权重加权。
 """
 
 from __future__ import annotations

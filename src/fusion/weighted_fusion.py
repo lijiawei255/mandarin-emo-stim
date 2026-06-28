@@ -1,21 +1,31 @@
 """多特征加权融合模块。
 
-输入 6 个模态的 (负面分 s, 唤醒分 a)，结合音频质量（SNR）、ASR 置信度、
-副语言事件强度，进行动态权重调整后加权融合，输出标准化情绪指标。
+【核心思想】单一模态的情感识别鲁棒性有限（声学受噪声干扰、文本受 ASR 错误影响）。
+本项目采用「声学 + 文本」双通道、6 模态加权融合，借鉴多模态情感计算的可靠性
+原则：当某一通道信号质量下降时，自动把信任度转移到更可靠的通道，使整体估计
+对噪声/口音/ASR 错误更鲁棒。
 
-模态名（与配置 fusion_weights 对应）：
-    acoustic  : emotion2vec 声学情感
-    prosody   : parselmouth 韵律
-    paralang  : PANNs 副语言
-    physical  : librosa 物理声学
-    text_llm  : Qwen3 文本语义
-    text_stat : jieba 文本统计
+【模态】（默认权重见 config/settings.json，权重和=1）：
+    acoustic  : emotion2vec 声学情感    (s=0.30, a=0.35) ← 主干，捕捉语调音色
+    prosody   : parselmouth 韵律        (s=0.15, a=0.25) ← F0/节奏/HNR
+    paralang  : PANNs 副语言事件        (s=0.10, a=0.15) ← 笑/哭/尖叫等
+    physical  : librosa 物理声学        (s=0.05, a=0.10) ← 响度/频谱/粗糙度
+    text_llm  : Qwen3 文本语义          (s=0.30, a=0.10) ← 语义层负面情绪
+    text_stat : jieba 文本统计          (s=0.10, a=0.05) ← 词法层情感极性
+说明：负面分(negative)中文本权重较高（语义直接表达负面），唤醒分(arousal)中
+声学权重较高（唤醒主要由声学能量/节奏体现）。
 
-动态调整规则（详见项目计划文档 3.4 节）：
-    1. 低 SNR：降低声学模态权重，提升文本模态权重，再归一化。
-    2. 低 ASR 置信度：降低文本模态权重，再归一化。
-    3. 极端情况（SNR<5dB 且 ASR<0.3）：所有模态平均分配。
-    4. 强副语言事件：副语言模态权重 ×1.5，再归一化。
+【动态权重调整】（依据信号质量自适应，是鲁棒性的关键）：
+    1. 低 SNR：声学模态（acoustic/prosody/paralang/physical）受噪声污染不可信，
+       按比例衰减权重并转移给文本模态，再归一化保持权重和=1。
+       —— 对称地，低 ASR 置信度时反向：文本不可信，权重转回声学。
+    2. 极端情况（SNR<5dB 且 ASR<0.3）：两通道都不可信，所有模态平均分配(各1/6)，
+       避免任一方噪声主导。
+    3. 强副语言事件（如尖叫 confidence>0.8）：副语言是强情感信号，权重×1.5放大。
+每次调整后重新归一化，确保权重和恒为 1。
+
+【输出】加权求和得 Negative/Arousal，Valence = 1 - Negative（负向效价度量），
+再由 quadrant.py 做软象限判定。
 """
 
 from __future__ import annotations

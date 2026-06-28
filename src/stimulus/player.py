@@ -7,12 +7,16 @@
 from __future__ import annotations
 
 import threading
-import time
 from typing import Any
 
 import numpy as np
-import sounddevice as sd
 from PySide6.QtCore import QObject, Signal
+
+
+def _import_sd():
+    """延迟导入 sounddevice（避免顶层 import 导致 GUI 在依赖缺失时崩溃）。"""
+    import sounddevice as sd
+    return sd
 
 
 class AudioPlayer(QObject):
@@ -25,7 +29,7 @@ class AudioPlayer(QObject):
         super().__init__(parent)
         self.sr = sr
         self._data: np.ndarray | None = None
-        self._stream: sd.OutputStream | None = None
+        self._stream = None  # sd.OutputStream，延迟创建
         self._position = 0.0
         self._volume = 0.8
         self._loop = False
@@ -59,12 +63,21 @@ class AudioPlayer(QObject):
         # crossfade 长度
         self._fade_samples = int(0.2 * self.sr)
 
-        self._stream = sd.OutputStream(
-            samplerate=self.sr, channels=self._data.shape[1],
-            dtype="float32", blocksize=2048, latency="low",
-            callback=self._callback,
-        )
-        self._stream.start()
+        try:
+            sd = _import_sd()
+            self._stream = sd.OutputStream(
+                samplerate=self.sr, channels=self._data.shape[1],
+                dtype="float32", blocksize=2048, latency="low",
+                callback=self._callback,
+            )
+            self._stream.start()
+        except ImportError:
+            # sounddevice 缺失：保持播放状态(进度仍会推进)，但无声输出。
+            # 上层 GUI 可通过其他方式提示用户。
+            self._stream = None
+        except Exception:
+            # 音频设备不可用等：同样静默降级，避免崩溃。
+            self._stream = None
 
     def _callback(self, outdata: np.ndarray, frames: int,
                   time_info, status) -> None:
