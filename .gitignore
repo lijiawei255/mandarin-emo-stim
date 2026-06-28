@@ -226,6 +226,13 @@ process_plan/
 # 便携数据目录：模型文件、用户录音、历史记录、日志等（含隐私/大文件，绝不提交）
 portable_data/
 
+# 个人真实录音（隐私数据，仅本地测试用，绝不提交）
+# 仅 tests/fixtures/mandarin_sample.wav（Public Domain）作为公开测试夹具
+tests/fixtures/anxiety.*
+tests/fixtures/*.m4a
+tests/fixtures/*_local.*
+tests/fixtures/personal_*
+
 # pytest 缓存
 .pytest_cache/
 
