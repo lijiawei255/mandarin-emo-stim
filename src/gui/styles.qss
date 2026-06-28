@@ -1,0 +1,143 @@
+/* 构成主义（Constructivism）风格样式表
+   五色严格限定：红 #E30613 / 蓝 #0057B8 / 黄 #FFD600 / 黑 #000000 / 白 #FFFFFF
+   控件：直角矩形、border-radius:0、无阴影、无渐变、3px 黑框 */
+
+QWidget {
+    background-color: #FFFFFF;
+    color: #000000;
+    font-family: "Source Han Sans", "Microsoft YaHei", "DIN Alternate", sans-serif;
+}
+
+/* ===== 通用按钮 ===== */
+QPushButton {
+    border: 3px solid #000000;
+    border-radius: 0px;
+    padding: 10px 16px;
+    font-weight: bold;
+    background-color: #FFFFFF;
+    color: #000000;
+}
+QPushButton:hover {
+    background-color: #FFD600;
+}
+QPushButton:pressed {
+    background-color: #000000;
+    color: #FFFFFF;
+}
+QPushButton:disabled {
+    background-color: #CCCCCC;
+    color: #888888;
+    border-color: #888888;
+}
+
+/* ===== 红色块（音频控制区） ===== */
+#RedPanel {
+    background-color: #E30613;
+    border: 3px solid #000000;
+}
+#RedPanel QLabel {
+    color: #FFFFFF;
+    font-weight: bold;
+}
+#RedPanel QPushButton {
+    background-color: #E30613;
+    color: #FFFFFF;
+    border: 3px solid #FFFFFF;
+}
+#RedPanel QPushButton:hover {
+    background-color: #FFFFFF;
+    color: #E30613;
+}
+#RedPanel QPushButton:checked {
+    background-color: #FFFFFF;
+    color: #E30613;
+}
+#RedPanel QComboBox {
+    background-color: #FFFFFF;
+    color: #000000;
+    border: 3px solid #FFFFFF;
+}
+
+/* ===== 蓝色块（多模态分解） ===== */
+#BluePanel {
+    background-color: #0057B8;
+    border: 3px solid #000000;
+}
+#BluePanel QLabel {
+    color: #FFFFFF;
+    font-weight: bold;
+}
+
+/* ===== 黄色块（声刺激） ===== */
+#YellowPanel {
+    background-color: #FFD600;
+    border: 3px solid #000000;
+}
+#YellowPanel QLabel {
+    color: #000000;
+    font-weight: bold;
+}
+
+/* ===== 黑色状态块 ===== */
+#StatusPanel {
+    background-color: #000000;
+    border: 3px solid #000000;
+}
+#StatusPanel QLabel {
+    color: #FFFFFF;
+    font-size: 12px;
+}
+
+/* ===== 白色主展示区 ===== */
+#MainPanel {
+    background-color: #FFFFFF;
+    border: 3px solid #000000;
+}
+
+/* ===== 进度条 / 滑块（直角） ===== */
+QProgressBar {
+    border: 3px solid #000000;
+    border-radius: 0px;
+    background-color: #FFFFFF;
+    text-align: center;
+    font-weight: bold;
+}
+QProgressBar::chunk {
+    background-color: #E30613;
+}
+QSlider::groove:horizontal {
+    border: 2px solid #000000;
+    height: 6px;
+    background: #FFFFFF;
+}
+QSlider::handle:horizontal {
+    background: #000000;
+    width: 14px;
+    margin: -6px 0;
+    border: 2px solid #000000;
+}
+
+/* ===== 文本区 ===== */
+QTextEdit, QPlainTextEdit {
+    border: 3px solid #000000;
+    background-color: #FFFFFF;
+    color: #000000;
+}
+
+/* ===== 菜单栏 ===== */
+QMenuBar {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: none;
+}
+QMenuBar::item:selected {
+    background-color: #FFD600;
+    color: #000000;
+}
+QMenu {
+    border: 3px solid #000000;
+    background-color: #FFFFFF;
+}
+QMenu::item:selected {
+    background-color: #FFD600;
+}
