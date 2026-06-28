@@ -9,7 +9,9 @@
 
 funasr==1.0.25
 modelscope==1.14.0
-transformers==4.44.0
+# 注：Qwen3 架构在 transformers 4.51 才加入，原计划文档锁定的 4.44.0 无法加载 Qwen3。
+# 4.51.3 经验证与 funasr 1.0.25 / bitsandbytes 0.43.3 / accelerate 0.33.0 兼容。
+transformers==4.51.3
 accelerate==0.33.0
 bitsandbytes==0.43.3; platform_system != "Darwin" or platform_machine != "arm64"
 soundfile==0.12.1
