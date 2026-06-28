@@ -8,6 +8,15 @@ QWidget {
     font-family: "Source Han Sans", "Microsoft YaHei", "DIN Alternate", sans-serif;
 }
 
+/* ===== 模型加载浮层 ===== */
+#LoadingOverlay {
+    background-color: rgba(0, 0, 0, 180);  /* 半透明黑色遮罩 */
+}
+#LoadingCard {
+    background-color: #FFFFFF;
+    border: 3px solid #000000;
+}
+
 /* ===== 通用按钮 ===== */
 QPushButton {
     border: 3px solid #000000;

@@ -27,6 +27,7 @@ from src.audio.loader import save_wav
 from src.audio.recorder import AudioRecorder
 from src.config_loader import load_settings
 from src.gui.threads import (AnalysisWorker, ModelLoadWorker, StimulusWorker)
+from src.gui.widgets.loading_overlay import LoadingOverlay
 from src.gui.widgets.metric_bar import MetricBar
 from src.gui.widgets.modal_bars import ModalBars
 from src.gui.widgets.status_block import StatusBlock
@@ -56,6 +57,14 @@ class MainWindow(QMainWindow):
         self.is_recording = False
         self.record_timer = QTimer(self)
         self.record_timer.timeout.connect(self._update_record_elapsed)
+
+        # 工作线程强引用（避免被 GC 导致 QThread destroyed 崩溃）
+        self.model_worker: ModelLoadWorker | None = None
+        self.analysis_worker = None
+        self.stim_worker = None
+
+        # 模型加载进度浮层
+        self.loading_overlay = LoadingOverlay(self)
 
         self._build_ui()
         self._connect_workers_slots()
@@ -256,6 +265,9 @@ class MainWindow(QMainWindow):
 
     def start_model_loading(self) -> None:
         self.status_block.set_status("模型加载中…")
+        # 显示加载进度浮层
+        self.loading_overlay.show_loading()
+        # 强引用 worker，避免被 GC 导致 QThread destroyed
         self.model_worker = ModelLoadWorker(config=self.config)
         self.model_worker.progress.connect(self._on_model_progress)
         self.model_worker.finished_ok.connect(self._on_models_loaded)
@@ -264,16 +276,22 @@ class MainWindow(QMainWindow):
 
     def _on_model_progress(self, stage: str, pct: int) -> None:
         self.status_block.set_status(f"加载：{stage} {pct}%")
+        self.status_block.set_model_progress(min(3, pct // 25), 4)
+        # 更新浮层
+        self.loading_overlay.update_progress(stage, pct)
 
     def _on_models_loaded(self, manager) -> None:
         self.manager = manager
         self.status_block.set_status("就绪")
         self.status_block.set_mode(manager.get_device().upper())
         self.status_block.set_model_progress(manager.loaded_count, 4)
+        # 隐藏浮层
+        self.loading_overlay.show_done()
         self.btn_generate.setEnabled(False)  # 待分析完成
 
     def _on_model_failed(self, msg: str) -> None:
         self.status_block.set_status("模型加载失败")
+        self.loading_overlay.show_failed(msg)
         QMessageBox.critical(self, "模型加载失败", msg)
 
     def on_record_clicked(self) -> None:
@@ -569,6 +587,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         try:
+            # 关键：若有工作线程仍在运行，先请求中断并等待其退出，
+            # 否则 QThread 被销毁时会触发 "Destroyed while thread is still running" 崩溃。
+            for worker in (self.model_worker, self.analysis_worker, self.stim_worker):
+                if worker is not None and worker.isRunning():
+                    worker.requestInterruption()
+                    worker.quit()
+                    worker.wait(3000)  # 最多等 3 秒
+
             if self.is_recording:
                 self.record_timer.stop()
                 if self.recorder is not None:

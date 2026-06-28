@@ -43,6 +43,52 @@ def window(qt_app):
     w.close()
 
 
+# ====================================================================
+# 模型加载浮层测试
+# ====================================================================
+def test_loading_overlay_exists(window):
+    """主窗口含加载浮层控件。"""
+    assert window.loading_overlay is not None
+    assert window.loading_overlay.isVisible() is False  # 默认隐藏
+
+
+def test_loading_overlay_show_and_progress(window):
+    """浮层显示并按阶段更新进度/状态标记。"""
+    ov = window.loading_overlay
+    ov.show_loading()
+    assert ov.isVisible() is True
+
+    # 模拟加载到第 2 个模型(emotion2vec, 25%)
+    ov.update_progress("emotion2vec", 25)
+    assert ov.total_bar.value() == 25
+    assert "emotion2vec" in ov.current_label.text()
+    # ASR 应标为完成(绿),emotion2vec 进行中(红)
+    assert "✓" in ov.stage_labels[0].text()
+    assert "●" in ov.stage_labels[1].text()
+    assert "○" in ov.stage_labels[2].text()  # PANNs 待加载
+
+    ov.hide()
+
+
+def test_loading_overlay_done(window):
+    """加载完成后全部标记为完成并隐藏。"""
+    ov = window.loading_overlay
+    ov.show_loading()
+    ov.show_done()
+    assert ov.total_bar.value() == 100
+    for lbl in ov.stage_labels:
+        assert "✓" in lbl.text()
+    assert ov.isVisible() is False
+
+
+def test_loading_overlay_failed(window):
+    """加载失败显示错误信息。"""
+    ov = window.loading_overlay
+    ov.show_loading()
+    ov.show_failed("显存不足")
+    assert "显存不足" in ov.current_label.text()
+
+
 def test_main_window_constructs(window):
     """主窗口能构建并包含五块面。"""
     assert window.windowTitle().startswith("Mandarin-EmoStim")
