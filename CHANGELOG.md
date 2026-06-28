@@ -4,6 +4,20 @@
 
 ## [Unreleased] - 2026-06-28
 
+### 修复：LLM 加载后程序闪退（CUDA + QThread 跨线程段错误）
+
+**症状**：4 个模型全部加载成功（日志显示「LLM 模型就绪」）后，程序**无 Python Traceback 直接闪退**。
+
+**根因**：模型加载在 `ModelLoadWorker`（QThread 工作线程）中执行，加载了 CUDA 模型（尤其 Qwen3 的 bitsandbytes NF4 量化）。PyTorch CUDA 上下文绑定到创建它的线程，工作线程结束后 CUDA 资源清理与主线程访问 CUDA 张量冲突，触发 **C 层段错误**（Python 的 excepthook 与 worker 的 except 都捕获不到）。
+
+**修复**：模型加载从 QThread 工作线程改为**主线程分阶段加载**（`main_window.start_model_loading` + `_load_next_model`）：
+- 每个模型作为独立的 `QTimer.singleShot` 回调，阶段间调用 `QApplication.processEvents()` 刷新 UI；
+- 加载进度浮层仍可见（浮层在每阶段更新），界面不卡死；
+- 所有 CUDA 操作都在主线程完成，避免跨线程段错误；
+- 保留 OOM 自动降级 CPU 逻辑。
+
+**验证**：主线程加载 4 真实模型完成无崩溃（device=cuda, count=4, status=就绪）；GUI 17 项测试通过。
+
 ### UI 重构：构成主义 → 浅色包豪斯（Light Bauhaus）
 
 将可视化界面从五色构成主义（红/蓝/黄/黑厚边框色块）重构为浅色包豪斯风格：

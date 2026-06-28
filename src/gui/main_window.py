@@ -277,39 +277,99 @@ class MainWindow(QMainWindow):
         pass
 
     def start_model_loading(self) -> None:
-        self.status_block.set_status("模型加载中…")
-        # 显示加载进度浮层
+        """分阶段在主线程加载模型。
+
+        【为何不用 QThread 工作线程】PyTorch CUDA 上下文绑定到创建它的线程。
+        在 QThread 工作线程里加载 CUDA 模型（尤其 bitsandbytes NF4 量化）后，
+        工作线程退出时与主线程访问 CUDA 张量冲突，会触发 C 层段错误
+        （无 Python Traceback 直接闪退）。
+
+        改为主线程分阶段加载：每个模型作为独立的 QTimer 回调，阶段之间调用
+        ``QApplication.processEvents()`` 刷新 UI，使加载进度浮层可见、界面不卡死，
+        同时所有 CUDA 操作都在主线程完成，避免跨线程崩溃。
+        """
+        from PySide6.QtWidgets import QApplication
+        from src.models.model_manager import ModelManager
         self.loading_overlay.show_loading()
-        # 强引用 worker，避免被 GC 导致 QThread destroyed
-        self.model_worker = ModelLoadWorker(config=self.config)
-        self.model_worker.progress.connect(self._on_model_progress)
-        self.model_worker.finished_ok.connect(self._on_models_loaded)
-        self.model_worker.failed.connect(self._on_model_failed)
-        self.model_worker.interrupted.connect(self._on_model_interrupted)
-        self.model_worker.start()
+        self.status_block.set_status("模型加载中…")
+
+        # 延迟创建 ModelManager，分阶段加载
+        self._pending_manager = ModelManager(config=self.config)
+        self._pending_manager.resolve_device()
+        self._pending_manager._disable_funasr_auto_requirements()
+        self._pending_manager._asr = None
+        self._pending_manager._emotion = None
+        self._pending_manager._pann = None
+        self._pending_manager._llm = None
+        self._pending_manager._loaded = False
+
+        self._load_stages = [
+            ("ASR (Paraformer)", "_load_asr"),
+            ("emotion2vec", "_load_emotion"),
+            ("PANNs (CNN10)", "_load_pann"),
+            ("LLM (Qwen3)", "_load_llm"),
+        ]
+        self._load_idx = 0
+        QTimer.singleShot(50, self._load_next_model)
+
+    def _load_next_model(self) -> None:
+        """加载下一个模型（主线程，每阶段间刷新 UI）。"""
+        from PySide6.QtWidgets import QApplication
+        if self._load_idx >= len(self._load_stages):
+            self._on_models_loaded_main_thread()
+            return
+
+        name, loader_name = self._load_stages[self._load_idx]
+        pct = int(self._load_idx / len(self._load_stages) * 100)
+        self.status_block.set_status(f"加载：{name} {pct}%")
+        self.status_block.set_model_progress(self._load_idx, 4)
+        self.loading_overlay.update_progress(name, pct)
+        QApplication.processEvents()  # 刷新 UI 显示进度
+
+        try:
+            getattr(self._pending_manager, loader_name)()
+            self._load_idx += 1
+            # 用 singleShot 让事件循环喘息，再加载下一个
+            QTimer.singleShot(10, self._load_next_model)
+        except (RuntimeError, MemoryError, OSError) as e:
+            if self._pending_manager.device == "cuda" and self._pending_manager._is_oom_like(e):
+                logger.warning("加载 %s 显存不足(%s)，降级 CPU…", name, e)
+                self._pending_manager._switch_device_to_cpu()
+                QTimer.singleShot(10, self._load_next_model)  # 重试（CPU）
+            else:
+                self._on_model_failed(str(e))
+        except Exception as e:  # noqa: BLE001
+            logger.exception("加载 %s 失败", name)
+            self._on_model_failed(str(e))
+
+    def _on_models_loaded_main_thread(self) -> None:
+        """4 模型全部加载完成（主线程）。"""
+        self._pending_manager._loaded = True
+        self.manager = self._pending_manager
+        self.status_block.set_status("就绪")
+        self.status_block.set_mode(self.manager.get_device().upper())
+        self.status_block.set_model_progress(self.manager.loaded_count, 4)
+        self.loading_overlay.show_done()
+        self.btn_record.setEnabled(True)
+        self.btn_upload.setEnabled(True)
+        self.btn_generate.setEnabled(False)
 
     def _on_model_progress(self, stage: str, pct: int) -> None:
+        """（保留，供可能的 worker 模式兼容）"""
         self.status_block.set_status(f"加载：{stage} {pct}%")
         self.status_block.set_model_progress(min(3, pct // 25), 4)
-        # 更新浮层
         self.loading_overlay.update_progress(stage, pct)
 
     def _on_models_loaded(self, manager) -> None:
+        """（保留兼容：主线程模式下由 _on_models_loaded_main_thread 替代）"""
         self.manager = manager
         self.status_block.set_status("就绪")
         self.status_block.set_mode(manager.get_device().upper())
         self.status_block.set_model_progress(manager.loaded_count, 4)
-        # 隐藏浮层
         self.loading_overlay.show_done()
         self.btn_record.setEnabled(True)
         self.btn_upload.setEnabled(True)
-        self.btn_generate.setEnabled(False)  # 待分析完成
-
-    def _on_model_interrupted(self) -> None:
-        self.status_block.set_status("模型加载已中断")
-        self.loading_overlay.show_failed("用户中断了模型加载")
-        self.btn_record.setEnabled(False)
-        self.btn_upload.setEnabled(False)
+        self.btn_generate.setEnabled(False)
 
     def _on_model_failed(self, msg: str) -> None:
         self.status_block.set_status("模型加载失败")
