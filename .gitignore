@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Process planning documents
+#   Temporary/procedural planning files (e.g., feature modification plans,
+#   design notes, work-in-progress documentation). These are not essential to
+#   the open-source project and may confuse other developers.
+process_plan/
