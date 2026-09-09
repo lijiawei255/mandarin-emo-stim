@@ -122,3 +122,27 @@ def test_pink_noise_only_in_down_regulation_quadrants(stim_cfg):
         m = {k: (1.0 if k == q else 0.0) for k in ("Q1", "Q2", "Q3", "Q4")}
         p = compute_params(0.5, 0.5, m, stim_cfg)
         assert (p.noise_ratio > 0) is expect_noise
+
+
+def test_params_continuous_across_quadrant_boundary(stim_cfg):
+    """软混合真实生效：valence 跨过 0.5（Q2↔Q1）时脉冲率/基频/粉噪连续变化。
+
+    此前实现只取主象限分支，隶属度未参与计算，v=0.49→0.51 时 pr 从 Q2 公式跳到 Q1 公式。
+    """
+    prev = None
+    for v in np.linspace(0.40, 0.60, 81):
+        m = compute_quadrant_memberships(v, 0.9)
+        p = compute_params(v, 0.9, m, stim_cfg)
+        if prev is not None:
+            assert abs(p.pr - prev.pr) < 0.25, f"pr jump at v={v:.3f}: {prev.pr:.3f}->{p.pr:.3f}"
+            assert abs(p.f0 - prev.f0) < 30, f"f0 jump at v={v:.3f}"
+            assert abs(p.noise_ratio - prev.noise_ratio) < 0.03
+        prev = p
+
+
+def test_pure_membership_matches_branch_formula(stim_cfg):
+    """隶属度为 one-hot 时退化为该象限的连续映射公式。"""
+    m = {"Q2": 1.0, "Q1": 0.0, "Q3": 0.0, "Q4": 0.0}
+    p = compute_params(0.2, 0.6, m, stim_cfg)
+    assert p.pr == pytest.approx(0.25 + 0.75 * 0.4)
+    assert p.f0 == pytest.approx(200 + 200 * 0.2)
