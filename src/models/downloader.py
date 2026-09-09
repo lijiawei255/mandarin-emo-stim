@@ -14,8 +14,8 @@ from __future__ import annotations
 import logging
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from src import portable
 

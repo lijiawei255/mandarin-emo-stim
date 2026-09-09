@@ -18,9 +18,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchlibrosa.stft import LogmelFilterBank, Spectrogram
-
 from panns_inference.models import ConvBlock, init_bn
+from torchlibrosa.stft import LogmelFilterBank, Spectrogram
 
 
 def init_layer(layer: nn.Linear) -> None:

@@ -6,9 +6,9 @@ import json
 import numpy as np
 import pytest
 
-from src.storage.database import HistoryDB
-from src.storage.history import HistoryManager, HistoryFull
 from src.storage import exporter
+from src.storage.database import HistoryDB
+from src.storage.history import HistoryFull, HistoryManager
 
 
 # ---------------- database ----------------

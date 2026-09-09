@@ -11,7 +11,6 @@
 """
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -133,8 +132,8 @@ def test_zscore_normalize_handles_extremes():
 
 def test_fusion_handles_all_zero_scores():
     """全 0 模态分数不导致除零。"""
-    from src.fusion.weighted_fusion import WeightedFusion, MODALITIES
     from src.config_loader import load_settings
+    from src.fusion.weighted_fusion import MODALITIES, WeightedFusion
     fus = WeightedFusion(load_settings())
     scores = {m: (0.0, 0.0) for m in MODALITIES}
     r = fus.fuse(scores, audio_quality={"snr_db": 3.0}, asr_confidence=0.2)
@@ -164,6 +163,7 @@ def test_cli_missing_file_returns_error():
 def test_historydb_concurrent_writes_safe(tmp_path):
     """多线程并发写历史记录不损坏数据库（锁保护）。"""
     import threading
+
     from src.storage.database import HistoryDB
     db = HistoryDB(db_path=tmp_path / "concurrent.db", max_records=200)
 
@@ -187,6 +187,7 @@ def test_sigint_timer_has_python_slot(monkeypatch):
     import os
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+
     from app import Application
 
     qapp = QCoreApplication.instance() or QCoreApplication([])
@@ -230,6 +231,7 @@ def test_panns_detect_marks_degraded_when_labels_missing(tmp_path, monkeypatch):
 def test_llm_first_call_is_greedy():
     """首次调用 do_sample=False（可复现），解析失败后重试才采样。"""
     import torch
+
     from src.models.llm_model import LLMModel
 
     calls = []

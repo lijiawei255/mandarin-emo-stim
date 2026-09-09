@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it as below."
+title: "Mandarin-EmoStim: offline Mandarin speech emotion quantification with personalized auditory stimulus generation"
+type: software
+authors:
+  - family-names: "Li"
+    given-names: "Jiawei"
+version: 0.1.0
+date-released: 2026-09-10
+license: Apache-2.0
+repository-code: "https://github.com/lijiawei255/mandarin-emo-stim"
+url: "https://github.com/lijiawei255/mandarin-emo-stim"
+keywords:
+  - speech emotion recognition
+  - Mandarin
+  - affective computing
+  - Russell circumplex
+  - auditory stimulus
+abstract: >-
+  A fully offline desktop research tool that quantifies the emotional state of
+  Mandarin speech on Russell's valence-arousal plane by late fusion of six
+  modalities (emotion2vec, prosody, paralinguistic events, physical acoustics,
+  LLM text semantics, lexicon statistics) and generates differentiated auditory
+  stimuli per quadrant. Evaluation on public corpora (AISHELL-3, CSEMOTIONS) is
+  documented in docs/evaluation.md.

@@ -181,6 +181,7 @@ def apply_state(win, state: str) -> None:
 
 def make_window(width: int, height: int, state: str):
     from PySide6.QtWidgets import QApplication
+
     from src.gui.main_window import MainWindow
     from src.gui.theme import build_qss
     app = QApplication.instance() or QApplication(sys.argv)

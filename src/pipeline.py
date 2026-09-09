@@ -12,13 +12,11 @@
 from __future__ import annotations
 
 import logging
-import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-import numpy as np
-
-from src import portable
+from src import portable  # noqa: F401  便携环境副作用
 from src.audio import loader, vad
 from src.config_loader import load_settings
 from src.features import physical as physical_feat

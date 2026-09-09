@@ -7,9 +7,7 @@ CUDA 上下文跨线程会触发段错误，故由 MainWindow 在主线程分阶
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-import numpy as np
 from PySide6.QtCore import QThread, Signal
 
 from src.models.model_manager import ModelManager  # noqa: F401  (类型注解)

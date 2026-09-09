@@ -70,8 +70,8 @@ def test_llm_fallback_on_garbage(manager):
 
 def test_panns_detect_no_crash(manager):
     """PANNs 对夹具推理不报错，返回事件列表与聚合分。"""
-    import soundfile as sf
     import librosa
+    import soundfile as sf
     y, sr = sf.read(str(FIXTURE))
     # PANNs 期望 32000Hz
     if sr != 32000:

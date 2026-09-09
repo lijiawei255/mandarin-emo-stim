@@ -7,9 +7,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
-from src import portable
+from src import portable  # noqa: F401  便携环境副作用（须先于模型库导入）
 from src.config_loader import load_settings
 
 logger = logging.getLogger("mandarin_emo_stim.model_manager")

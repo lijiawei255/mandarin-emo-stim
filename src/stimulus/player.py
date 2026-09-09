@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
 
 import numpy as np
 from PySide6.QtCore import QObject, Signal

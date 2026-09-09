@@ -5,9 +5,7 @@
 
 from __future__ import annotations
 
-import logging
 import sys
-from pathlib import Path
 
 from src import portable
 
@@ -58,7 +56,6 @@ class Application:
         return cli_main(["--audio", audio_path])
 
     def _run_gui(self) -> int:
-        from PySide6.QtCore import QTimer, Signal
         from PySide6.QtWidgets import QApplication
         self._qt_app = QApplication.instance() or QApplication(sys.argv)
 
@@ -99,7 +96,7 @@ class Application:
         return timer
 
     @staticmethod
-    def _install_crash_handlers(qt_app: "QApplication") -> None:
+    def _install_crash_handlers(qt_app) -> None:
         """安装崩溃/中断处理器。
 
         - SIGINT(Ctrl+C)/SIGTERM：优雅退出（触发窗口 closeEvent 清理资源）。

@@ -3,12 +3,12 @@
 import pytest
 
 from src.config_loader import load_settings
-from src.fusion.weighted_fusion import WeightedFusion
-from src.fusion.normalizer import zscore_normalize, clip01
+from src.fusion.normalizer import clip01, zscore_normalize
 from src.fusion.quadrant import (
     compute_quadrant_memberships,
     dominant_quadrant,
 )
+from src.fusion.weighted_fusion import WeightedFusion
 
 
 @pytest.fixture
@@ -138,6 +138,7 @@ def test_fusion_modal_scores_present(fusion):
 # ---------------- prosody norms 加载 ----------------
 def test_load_prosody_stats_prefers_file_and_falls_back(tmp_path):
     import json
+
     from src.fusion.normalizer import LEGACY_PROSODY_STATS, load_prosody_stats
     p = tmp_path / "prosody_norms.json"
     p.write_text(json.dumps({

@@ -10,11 +10,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QFrame, QLabel, QProgressBar, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import QFrame, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from src.gui.theme import inline
-
 
 # 4 个加载阶段的中文展示名（与 ModelManager.load_all 顺序一致）
 STAGE_LABELS = [

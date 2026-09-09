@@ -1,16 +1,14 @@
 """声刺激生成测试。"""
 
-import os
-import tempfile
 
 import numpy as np
 import pytest
 import soundfile as sf
 
-from src.config_loader import load_settings, load_stimulus_params
+from src.config_loader import load_stimulus_params
+from src.fusion.quadrant import compute_quadrant_memberships
 from src.stimulus.generator import StimulusGenerator
 from src.stimulus.strategies import compute_params
-from src.fusion.quadrant import compute_quadrant_memberships
 
 
 @pytest.fixture

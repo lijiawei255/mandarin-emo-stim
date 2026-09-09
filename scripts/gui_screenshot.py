@@ -20,8 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src import portable  # noqa: E402,F401  触发便携环境
 from scripts.ui_geometry_check import SIZES, STATES, apply_state  # noqa: E402
+from src import portable  # noqa: E402,F401  触发便携环境
 
 DEFAULT_OUT = PROJECT_ROOT / "docs" / "images" / "ui"
 
@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
+
     from src.gui.main_window import MainWindow
     from src.gui.theme import build_qss
 

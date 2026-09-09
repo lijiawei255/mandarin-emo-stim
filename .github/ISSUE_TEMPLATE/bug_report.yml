@@ -1,0 +1,39 @@
+name: Bug 报告 / Bug report
+description: 程序崩溃、结果异常、安装失败等
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么 / What happened
+      description: 期望行为与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1. python main.py
+        2. 点击「上传音频」选择 xxx.wav
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境 / Environment
+      description: OS、显卡与驱动、Python 版本、`pip freeze | grep -E "torch|funasr|transformers|PySide6"`
+      value: |
+        - OS:
+        - GPU / driver:
+        - Python:
+        - torch / funasr / transformers / PySide6:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / Logs
+      description: 粘贴 `portable_data/logs/app_YYYY-MM-DD.log` 相关片段。**请先删除录音转写等隐私内容。**
+      render: text

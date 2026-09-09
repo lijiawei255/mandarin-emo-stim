@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 常见问题 / FAQ
+    url: https://github.com/lijiawei255/mandarin-emo-stim/blob/main/docs/faq.md
+    about: 安装、模型下载、显存不足、录音等常见问题先看这里
+  - name: 科研依据与局限性
+    url: https://github.com/lijiawei255/mandarin-emo-stim/blob/main/docs/research_notes.md
+    about: 方法学出处、证据等级与已知局限

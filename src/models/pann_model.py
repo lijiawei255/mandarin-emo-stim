@@ -50,6 +50,7 @@ class PANNModel:
     def _load(self) -> None:
         import torch
         from panns_inference.pytorch_utils import move_data_to_device
+
         from src.models.panns_cnn10 import Cnn10  # 本地实现的 Cnn10 架构
 
         # 确保 checkpoint 与标签表就位

@@ -23,10 +23,21 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog,
-                               QFrame, QHBoxLayout, QLabel, QMainWindow,
-                               QMessageBox, QPushButton, QSlider, QTextEdit,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from src import portable
 from src.audio.loader import save_wav
@@ -290,7 +301,6 @@ class MainWindow(QMainWindow):
         ``QApplication.processEvents()`` 刷新 UI，使加载进度浮层可见、界面不卡死，
         同时所有 CUDA 操作都在主线程完成，避免跨线程崩溃。
         """
-        from PySide6.QtWidgets import QApplication
         from src.models.model_manager import ModelManager
         self.loading_overlay.show_loading()
         self.status_block.set_status("模型加载中…")
@@ -316,7 +326,6 @@ class MainWindow(QMainWindow):
 
     def _load_next_model(self) -> None:
         """加载下一个模型（主线程，每阶段间刷新 UI）。"""
-        from PySide6.QtWidgets import QApplication
         if self._load_idx >= len(self._load_stages):
             self._on_models_loaded_main_thread()
             return

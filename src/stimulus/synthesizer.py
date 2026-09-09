@@ -97,7 +97,7 @@ def synthesize(params: StimulusParams, duration: float, sr: int,
 
     # 1. 基础谐和音
     tone = np.zeros(n, dtype=np.float64)
-    for freq, amp in zip(params.freqs, params.amps):
+    for freq, amp in zip(params.freqs, params.amps, strict=False):
         tone += amp * np.sin(2 * np.pi * freq * t)
 
     # 2. 频谱塑形：带通滤波器，中心约在频谱质心附近

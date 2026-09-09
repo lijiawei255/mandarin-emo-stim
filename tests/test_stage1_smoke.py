@@ -3,12 +3,10 @@
 import json
 import os
 
-import pytest
-
 
 def test_config_jsons_parse():
     """三个配置文件均为合法 JSON 且结构完整。"""
-    from src import portable
+    from src import portable  # noqa: F401  验证可导入
 
     for path, key in [
         (portable.SETTINGS_PATH, "fusion_weights"),
@@ -42,7 +40,6 @@ def test_emotion_mapping_nine_classes():
 
 def test_portable_env_redirects_hf():
     """便携模式把 HF 缓存重定向到 portable_data 并启用国内镜像。"""
-    from src import portable  # 导入即触发 apply_env_overrides
 
     assert os.environ.get("HF_ENDPOINT") == "https://hf-mirror.com"
     assert "portable_data" in os.environ.get("HF_HOME", "")
@@ -50,13 +47,13 @@ def test_portable_env_redirects_hf():
 
 def test_core_python_deps_importable():
     """关键依赖可正常导入（不含重型模型推理）。"""
+    import jieba  # noqa: F401
     import librosa  # noqa: F401
     import numpy as np  # noqa: F401
     import scipy  # noqa: F401
     import slab  # noqa: F401
-    import jieba  # noqa: F401
-    import soundfile  # noqa: F401
     import sounddevice  # noqa: F401
+    import soundfile  # noqa: F401
     assert np.__version__.startswith("1.26")
 
 

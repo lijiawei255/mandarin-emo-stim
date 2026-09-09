@@ -54,6 +54,7 @@ def test_pipeline_asr_text_nonempty(pipeline):
 def test_pipeline_generates_stimulus(pipeline, tmp_path):
     """管线结果可驱动声刺激生成。"""
     import soundfile as sf
+
     from src.stimulus.generator import StimulusGenerator
 
     result = pipeline.analyze(str(FIXTURE))

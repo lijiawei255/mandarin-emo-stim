@@ -4,7 +4,6 @@ AudioRecorder.list_devices 与构造参数校验可在无设备环境测试；
 真实的 start/stop 采集由 GUI 录音测试用桩 recorder 覆盖。
 """
 
-import pytest
 
 from src.audio.recorder import AudioRecorder
 
@@ -49,7 +48,9 @@ def test_elapsed_correct_after_stop(monkeypatch):
     随后调用 elapsed() 永远返回 0，导致 GUI 误判「录音过短」。
     """
     import time
+
     import numpy as np
+
     import src.audio.recorder as rec_mod
 
     class _FakeStream:

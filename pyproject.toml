@@ -1,0 +1,55 @@
+[project]
+name = "mandarin-emo-stim"
+version = "0.1.0"
+description = "Fully offline Mandarin speech emotion quantification with personalized auditory stimulus generation (research tool)."
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Li Jiawei" }]
+keywords = ["speech-emotion-recognition", "mandarin", "affective-computing", "auditory-stimulus", "russell-circumplex"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.urls]
+Homepage = "https://github.com/lijiawei255/mandarin-emo-stim"
+Issues = "https://github.com/lijiawei255/mandarin-emo-stim/issues"
+Changelog = "https://github.com/lijiawei255/mandarin-emo-stim/blob/main/CHANGELOG.md"
+
+# 运行时依赖以 requirements.txt 为准（PyTorch 需按硬件单独安装，见 README）。
+# 本文件只承担：版本号单一来源、工具配置。
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+markers = [
+    "gpu: 需要 NVIDIA GPU 与已下载模型的测试（默认跳过）",
+    "slow: 耗时较长的测试，如 GUI 冒烟 / 布局检查（默认跳过）",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning:jieba",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["portable_data", "process_plan", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E402",  # 便携环境需在 import 前设置环境变量
+    "E501",  # 中文注释行宽由 line-length 兜底，不强制
+    "B008",
+    "UP007", # 保持 X | None 与 Optional 混用的现状
+    "UP038", # isinstance 元组写法保留
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "scripts"]
