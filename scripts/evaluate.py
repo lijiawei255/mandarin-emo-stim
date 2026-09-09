@@ -460,7 +460,7 @@ def cmd_neutral(args: argparse.Namespace) -> int:
         _json_dump({
             "_meta": {
                 "source": "AISHELL-3 test subset (emotion-neutral read speech), raw modality means",
-                "definition": "offset = 0.5 - mean_raw, clipped to ±%.1f; applied additively in WeightedFusion" % OFFSET_CLIP,
+                "definition": f"offset = 0.5 - mean_raw, clipped to ±{OFFSET_CLIP:.1f}; applied additively in WeightedFusion",
                 "n": len(rows), "generated": date.today().isoformat(),
                 "script": "scripts/evaluate.py neutral",
             },
