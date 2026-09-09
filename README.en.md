@@ -6,6 +6,14 @@
 
 **English** | [中文](./README.md)
 
+[![CI](https://github.com/lijiawei255/mandarin-emo-stim/actions/workflows/ci.yml/badge.svg)](https://github.com/lijiawei255/mandarin-emo-stim/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/lijiawei255/mandarin-emo-stim?display_name=tag)](https://github.com/lijiawei255/mandarin-emo-stim/releases)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![Python 3.10](https://img.shields.io/badge/python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-31014/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20NVIDIA%20CUDA%2012.1-lightgrey)](#hardware-requirements-current-release-windows--nvidia-gpu)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Cite](https://img.shields.io/badge/cite-CITATION.cff-green)](./CITATION.cff)
+
 </div>
 
 ---
@@ -22,6 +30,10 @@ With just a microphone, the tool:
 4. Generates **differentiated** personalized audible acoustic stimuli (WAV / real-time playback) according to Russell's circumplex model.
 
 > ⚠️ This tool is for research exploration only and does not constitute medical advice or treatment. Vulnerable groups (history of epilepsy, severe heart disease, major depression under active treatment) should use it under professional guidance.
+
+<p align="center">
+  <img src="./docs/images/ui/1440x900_analyzed.png" alt="Mandarin-EmoStim main window (analysis complete, 1440×900)" width="900">
+</p>
 
 ## Features
 
@@ -100,9 +112,47 @@ The closed loop is grounded in **psychology + multimodal affective computing**:
    consonant tones to energize depressed Q3. Parameters are continuous and soft-blended
    across quadrants to avoid abrupt transitions.
 
-Full algorithm derivations, per-modality rationale, parameter mappings, and references are in
-**[docs/research_notes.md](./docs/research_notes.md)** (in Chinese). Each module's docstring
-also has a concise explanation.
+```mermaid
+flowchart LR
+    MIC[Microphone / audio file] --> ASR[Paraformer ASR<br/>text + char timestamps]
+    MIC --> E2V[emotion2vec+<br/>9 classes → V-A]
+    MIC --> PRO[Prosody parselmouth<br/>F0 / slope / rate / HNR / jitter / shimmer]
+    MIC --> PAN[PANNs CNN10<br/>laughter / crying / sigh …]
+    MIC --> PHY[Physical acoustics librosa<br/>RMS / centroid / roughness / SNR]
+    ASR --> LLM[Qwen3-1.7B<br/>semantic negativity / arousal]
+    ASR --> LEX[jieba + lexicon<br/>polarity stats]
+    ASR -. timestamps .-> PRO
+    E2V & PRO & PAN & PHY & LLM & LEX --> FUS[Weighted fusion<br/>dynamic weights · degradation]
+    PHY -. SNR .-> FUS
+    FUS --> VA[Negative / Valence / Arousal<br/>soft quadrant memberships]
+    VA --> STIM[Stimulus parameters<br/>soft blend · quadrant strategy]
+    STIM --> SYN[Synthesis: harmonics → AM → ADSR → pink noise<br/>RMS normalise → peak limit → Haas]
+    SYN --> OUT[Playback / WAV / history]
+```
+
+Full algorithm derivations, per-modality rationale, parameter mappings, evidence levels and
+references are in **[docs/research_notes.md](./docs/research_notes.md)** (in Chinese). Each
+module's docstring also has a concise explanation.
+
+## Validation status
+
+The methodology has **not** been validated on naturalistic emotional speech. What has been
+validated, and its limits, is summarised below; full results are in
+**[docs/evaluation.md](./docs/evaluation.md)** and the evidence level of every method is
+annotated in **[docs/research_notes.md](./docs/research_notes.md)** (Chinese).
+
+| Tier | Corpus (licence) | What is checked | Status |
+|------|------------------|-----------------|--------|
+| 1 | AISHELL-3 (Apache-2.0, emotion-neutral read speech) | Measured prosodic z-score norms replacing hand-set constants; Paraformer CER; whether neutral speech maps to the centre | done |
+| 2 | CSEMOTIONS (Apache-2.0, acted emotions by professional voice actors) | V-A direction consistency across 7 emotions, quadrant confusion matrix, 6-modality ablation, dynamic-weight on/off | done |
+| 3 | Synthetic controlled signals (no external data) | Response direction of every module to F0 / rate / HNR / roughness manipulations; intervention-branch direction; continuity across quadrants | in CI |
+
+Known limits: acted emotion is exaggerated relative to natural emotion and **overestimates**
+real-world performance; studio-quality audio cannot exercise the noise-robustness rules; the ASR
+confidence is a text-length proxy; fusion weights and V-A anchors are heuristic, not learned.
+
+Reproduce: `pip install -r requirements-eval.txt`, then `python scripts/evaluate.py calibrate | neutral | emotion | report`
+(evaluation data is downloaded on demand into `portable_data/eval/`; the repository ships no audio).
 
 ## License
 

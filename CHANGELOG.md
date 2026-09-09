@@ -1,103 +1,71 @@
 # 更新日志
 
-本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
+版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased] - 2026-06-28
+## [0.1.0] - 2026-09-10
 
-### 修复：LLM 加载后程序闪退（CUDA + QThread 跨线程段错误）
+首个公开版本。在功能完成的基础上完成了一轮**科学性审核**：把每处方法学按证据等级
+（[文献] / [启发式] / [实测]）如实标注，修正引用错配与不成立的安全声明，用公开语料
+实测替换凭空设定的参数，并补齐开源仓库配套。
 
-**症状**：4 个模型全部加载成功（日志显示「LLM 模型就绪」）后，程序**无 Python Traceback 直接闪退**。
+### 科学性修正
 
-**根因**：模型加载在 `ModelLoadWorker`（QThread 工作线程）中执行，加载了 CUDA 模型（尤其 Qwen3 的 bitsandbytes NF4 量化）。PyTorch CUDA 上下文绑定到创建它的线程，工作线程结束后 CUDA 资源清理与主线程访问 CUDA 张量冲突，触发 **C 层段错误**（Python 的 excepthook 与 worker 的 except 都捕获不到）。
+- **韵律 z-score 基准改为实测**：`config/prosody_norms.json` 由 `scripts/evaluate.py calibrate`
+  在 AISHELL-3（Apache-2.0，情绪中性普通话朗读）上分层抽样测得，含男女分组；旧常数
+  降为兜底并如实标为「凭空设定」。
+- **三层验证**（`docs/evaluation.md`）：AISHELL-3 基准实测 + 字错率 + 中性语音输出分布；
+  CSEMOTIONS（Apache-2.0）情绪判别的象限混淆矩阵、V-A 方向一致性、Spearman、6 模态消融、
+  动态权重开关；合成受控信号的模块级方向性测试进 CI。结果**如实报告，含不达预期项**。
+- **引用错配更正**：粉噪「平复作用」所引 Söderlund 2007 为白噪对 ADHD 儿童认知的研究，
+  不支持该主张，已删除并改述为能量遮蔽/频谱填充。
+- **安全声明更正**：删除「-10 dBFS ≈ 70–75 dB SPL，无听力损伤风险」——dBFS 与声压级
+  无固定关系，实际声压取决于播放设备；改为数字限幅声明 + 低音量起听建议。
+- **与 ISO 原则的关系**：新增讨论，说明 Q2/Q3 的反向干预是有意设计选择，并引 Starcke &
+  von Georgi (2024) 作为对立证据；未做对照实验。
+- V-A 锚点、副语言贡献、子权重等标注为启发式；文本统计补 Chinese EmoBank/CVAW 出处；
+  ASR 置信度写明为文本长度代理指标（FunASR 不暴露后验概率）。
 
-**修复**：模型加载从 QThread 工作线程改为**主线程分阶段加载**（`main_window.start_model_loading` + `_load_next_model`）：
-- 每个模型作为独立的 `QTimer.singleShot` 回调，阶段间调用 `QApplication.processEvents()` 刷新 UI；
-- 加载进度浮层仍可见（浮层在每阶段更新），界面不卡死；
-- 所有 CUDA 操作都在主线程完成，避免跨线程段错误；
-- 保留 OOM 自动降级 CPU 逻辑。
+### 方法学实现改进
 
-**验证**：主线程加载 4 真实模型完成无崩溃（device=cuda, count=4, status=就绪）；GUI 17 项测试通过。
-
-### UI 重构：构成主义 → 浅色包豪斯（Light Bauhaus）
-
-将可视化界面从五色构成主义（红/蓝/黄/黑厚边框色块）重构为浅色包豪斯风格：
-
-**设计原则落地**
-- **功能优先**：去除冗余装饰（厚色块、3px 黑框），保留核心控件与信息层级；改用 1px 细线分区卡片。
-- **几何网格**：所有面板边距对齐到 8px 网格系统（ContentsMargins 统一 16/20px）。
-- **高对比度**：浅色背景（白 `#FFFFFF` / 浅灰 `#F5F5F7`）配深色文字（`#1A1A1A`），确保可读性。
-- **有限色彩**：主色仅 1 种（Bauhaus 蓝 `#1F5FA8`）+ 中性灰阶；状态色语义化区分（成功 `#2E7D32` 绿 / 警告 `#B8860B` 琥珀 / 错误 `#C62828` 红）。
-
-**重构范围**
-- `src/gui/styles.qss`：全面重写（全局浅色基底、按钮 hover 主色、进度条/滑块主色填充、菜单栏浅色细线、状态块浅灰、加载浮层浅色半透明遮罩）。
-- `src/gui/widgets/`：metric_bar（主色细进度条）、modal_bars（深色标签+主色条）、status_block（QFrame 浅灰水平状态条，语义着色）、waveform_view（白底蓝线）、loading_overlay（浅色遮罩+语义色）全部浅色化。
-- `src/gui/main_window.py`：去除内联硬编码颜色，改用 QSS 属性（`role`）驱动状态色；面板边距网格对齐；生成按钮主色强调。
-
-**端到端回归测试**
-- 视觉验证（大屏 1440×900 + 小屏 1280×720）：无文字重叠/截断/错位，中文渲染正常，五分区布局合理。
-- 模拟用户操作流：加载浮层阶段切换/分析结果驱动UI/指标更新/波形加载/状态色语义 —— 全部响应正确。
-- 自动化测试：17 项 GUI 测试 + 全量 91 项测试通过。
-
-### 健壮性提升（异常场景不崩溃 + 状态可回滚 + 明确错误提示）
-
-**用户中断与强制退出**
-- SIGINT(Ctrl+C)/SIGTERM 优雅退出：注册信号处理器 + 200ms 定时器唤醒 Python 信号检查（解决模型加载期间 Ctrl+C 无响应）+ sys.excepthook 未捕获异常兜底。
-- 工作线程中断支持：ModelLoadWorker/AnalysisWorker 在各阶段轮询 `isInterruptionRequested()`，中断时干净退出并发出 `interrupted` 信号（不再 QThread destroyed 崩溃）。
-- closeEvent 安全退出：对所有运行中的 worker 调用 quit+wait，确保资源释放。
-
-**并发与竞争条件**
-- 分析期间禁用 record/upload 按钮 + 防重复 AnalysisWorker（避免孤儿线程崩溃与状态污染）。
-- AudioPlayer 的 set_volume/pause/resume 加锁（修复音频回调线程的读写竞争）。
-- recorder.record() 的 finally 不再吞异常（移除 finally 内 return）。
-- HistoryDB 多线程并发写安全（已有锁保护，补充测试覆盖）。
-
-**资源异常**
-- OOM 自动降级 CPU：load_all 捕获 cuda.OutOfMemoryError/RuntimeError(MemoryError) 后自动切换 CPU 重试（fallback_to_cpu 不再是死代码）。
-- GUI 文件 I/O 全保护：save_wav/sf.write/history.export 全部 try/except + 友好提示，磁盘满/锁文件不崩溃。
-- PANNs checkpoint 完整性校验：修正大小阈值（30MB→[20,30]MB 合法区间），截断/损坏文件自动重下，下载后校验。
-
-**异常输入与边界条件**
-- 配置 schema 校验：load_settings 验证 settings.json 必需键，缺失时抛 ConfigError（清晰错误而非启动期 KeyError）。
-- z-score 归一化处理 inf/极端值；融合全 0 分数不除零；刺激边界 valence/arousal(0/1) 不崩溃。
+- 语速优先由 Paraformer 字级时间戳计算音节率（`vad.syllable_rate`），能量法仅作回退。
+- `f0_drop` 改为真实的 F0 时间斜率（此前用 `std_f0` 冒充）。
+- HNR 聚合保留合法负值帧，仅排除 Praat 的 -200 无定义哨兵。
+- LLM 首次调用 greedy 解码（可复现），解析失败才低温采样重试。
+- 合成器响度按 RMS 归一（此前按峰值归一却注释为 RMS），峰值限幅读取
+  `settings.stimulus.max_peak_dbfs` 并真正生效（此前统一 ×0.7 使限幅永不触发）。
+- **Q3 基频映射方向修正**：代码为「valence 越低 f0 越低」，与文档所述「提亮激活」相反。
+- **四象限软混合真正实现**：此前隶属度解包后未使用，只取主象限分支，跨 0.5 时参数跳变。
 
 ### 修复
-- **GUI 启动崩溃**：`recorder.py` 与 `player.py` 顶层 `import sounddevice` 导致依赖缺失时 GUI 无法 import 启动。改为延迟导入（按需加载），缺失时录音/播放静默降级并友好提示，GUI 仍能正常启动。
 
-### 文档（算法原理）
-- **代码 docstring**：为全部核心算法模块补充心理学/声学原理说明（emotion_model 离散→V-A投影、prosody 韵律情感线索、weighted_fusion 动态权重鲁棒性、quadrant 软判定、strategies 音乐心理学映射、synthesizer 心理声学信号处理、physical Sethares粗糙度、normalizer z-score、text_stats 词典加权）。
-- **docs/research_notes.md**：重写为完整算法原理总参考（Russell模型/6模态/动态权重/各模态算法/声刺激映射/归一化/局限性/10篇文献）。
-- **README**（中英）：新增「算法原理」章节，指向 research_notes。
+- 管线非关键模态失败时降级为中性分并列入 `degraded_modalities`（此前会在融合步骤 KeyError）。
+- Ctrl+C 保活定时器未连接 Python 槽，信号处理器永不运行；已修正并加测试。
+- PANNs 标签表随仓库分发（`resources/panns/`，AudioSet 元数据 CC BY 4.0），不再读用户主目录；
+  缺失时显式降级而非静默中性分；移除单卡上无意义的 `DataParallel`。
+- 移除 GUI 死代码（`ModelLoadWorker` 等），面板对象名语义化。
 
-### 已新增（核心功能）
-- **实时录音**：GUI「开始录音」按钮接通完整流程（开始/停止/实时计时/设备选择/到上限自动停止/录音→落盘→分析衔接）。
-- **端到端分析管线**：音频 → VAD/ASR → 6 模态特征 → 加权融合 → 象限判定 → 标准化输出。
-- **4 个预训练模型**（GPU NF4/FP16）：Paraformer-large ASR、emotion2vec_plus_large、PANNs CNN10（自行实现架构）、Qwen3-1.7B LLM。
-- **6 模态特征提取**：声学情感、韵律（parselmouth）、副语言事件（PANNs）、物理声学（librosa）、文本语义（Qwen3 few-shot）、文本统计（jieba + 内置情感词表）。
-- **差异化声刺激生成**：基于 Russell 四象限锚点的连续声学参数映射，软混合，安全限幅 -10dBFS，Haas 立体声。
-- **构成主义风格 GUI**（PySide6 + pyqtgraph）：五块面布局、五色严格限定、直角 3px 黑框、多线程不阻塞。
-- **SQLite 历史记录**：200 条上限、JSON/CSV 导出（UTF-8-BOM 兼容 Excel）、事务安全。
-- **便携模式**：所有运行时数据集中于 `portable_data/`，国内镜像（hf-mirror.com）支持。
-- **无头 CLI**：`python main.py --headless audio.wav` 或 `python -m src.cli`。
-- **双语 README**（中文默认 / 英文可选）。
-- **完整文档**：用户手册、开发者指南、科研依据、FAQ。
+### 界面
 
-### 测试
-- 92 项自动化测试全通过（单元 + GPU 模型 + 端到端 + GUI 冒烟）。
-- 测试夹具音频（Wikimedia Commons，Public Domain 中文普通话）。
+- 新主题：ivory 底色 + 单一陶土橙强调色，`src/gui/theme.py` 为唯一调色板来源，文字色按
+  WCAG AA（≥4.5:1）选定。
+- 布局几何自动检查（`scripts/ui_geometry_check.py` + `tests/test_gui_layout.py`）：3 分辨率 ×
+  3 状态无重叠/挤压/溢出；真实渲染截图见 `docs/images/ui/`，视觉核验记录见
+  `docs/superpowers/plans/ui-visual-check.md`。
 
-### 依赖版本（相对计划文档的修正）
-- `slab`: 0.2.3 → 1.8.2（0.2.3 不存在）
-- `panns-inference`: 0.1.3 → 0.1.1（0.1.3 不存在）
-- `transformers`: 4.44.0 → 4.51.3（4.44 不支持 qwen3 架构）
-- 重采样器：kaiser_best → soxr_hq（避免额外 resampy 依赖）
+### 仓库
 
-### 模型/配置修正
-- emotion2vec revision: v2.0.0 → v2.0.5（有效版本）
-- LLM 模型名: Qwen3-1.7B-Instruct → Qwen/Qwen3-1.7B（前者不存在）
-- PANNs: 自行实现 Cnn10 架构（panns_inference 仅含 Cnn14）
-- LLM prompt: 改用 few-shot + enable_thinking=False（提升小模型一致性）
+- `pyproject.toml`（版本单一来源、ruff、pytest）、GitHub Actions CI（Ubuntu + Windows）、
+  `CITATION.cff`、`CODE_OF_CONDUCT.md`、Issue/PR 模板、`.gitignore` 精简、ruff 清零。
+- README 徽章、界面截图、架构图、验证状态小节。
 
-### 性能（RTX 4000 Ada 12GB 实测）
-- 模型加载：~21s
-- 单次完整分析：~2.5s
-- 显存占用：~2.8GB（allocated）/ 12GB total
+### 早期开发记录（合并自 Unreleased）
+
+- 实时录音、端到端分析管线、4 个预训练模型（GPU NF4/FP16）、6 模态特征、差异化声刺激、
+  SQLite 历史记录、便携模式、无头 CLI、双语 README、健壮性处理（OOM 降级、信号处理、
+  worker 中断、配置校验）、模型加载改为主线程分阶段（修复 CUDA 跨线程段错误）、
+  录音时长判定修复。
+- 依赖修正：slab 1.8.2、panns-inference 0.1.1、transformers 4.51.3、emotion2vec v2.0.5、
+  Qwen/Qwen3-1.7B、自行实现 PANNs Cnn10。
+
+[0.1.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.1.0

@@ -6,6 +6,14 @@
 
 [English](./README.en.md) | **中文**
 
+[![CI](https://github.com/lijiawei255/mandarin-emo-stim/actions/workflows/ci.yml/badge.svg)](https://github.com/lijiawei255/mandarin-emo-stim/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/lijiawei255/mandarin-emo-stim?display_name=tag)](https://github.com/lijiawei255/mandarin-emo-stim/releases)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![Python 3.10](https://img.shields.io/badge/python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-31014/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20NVIDIA%20CUDA%2012.1-lightgrey)](#硬件要求当前版本windows--nvidia-gpu)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Cite](https://img.shields.io/badge/cite-CITATION.cff-green)](./CITATION.cff)
+
 </div>
 
 ---
@@ -22,6 +30,10 @@ Mandarin-EmoStim 实现了一条完整的本地闭环：**说话 → 情绪量�
 4. 依据 Russell 情绪环模型，生成**差异化**的个性化可听声刺激（WAV / 实时播放）。
 
 > ⚠️ 本工具为科研探索用途，不构成医疗建议或治疗手段。特殊人群（癫痫史、严重心脏病、重度抑郁症正在接受治疗者）建议在专业人员指导下使用。
+
+<p align="center">
+  <img src="./docs/images/ui/1440x900_analyzed.png" alt="Mandarin-EmoStim 主界面（分析完成态，1440×900）" width="900">
+</p>
 
 ## 特性
 
@@ -99,8 +111,45 @@ python -m src.stimulus.cli --audio path/to/test.wav
    如 Q2 焦虑用慢脉冲引导呼吸放缓、Q3 抑郁用明亮协和音注入能量。声学参数连续映射
    + 四象限软混合，避免硬切换突兀。
 
-完整的算法推导、各模态原理、参数映射依据、参考文献见
+```mermaid
+flowchart LR
+    MIC[麦克风 / 音频文件] --> ASR[Paraformer ASR<br/>文本 + 字级时间戳]
+    MIC --> E2V[emotion2vec+<br/>9 类 → V-A]
+    MIC --> PRO[韵律 parselmouth<br/>F0 / 斜率 / 语速 / HNR / Jitter / Shimmer]
+    MIC --> PAN[PANNs CNN10<br/>笑 / 哭 / 叹息 …]
+    MIC --> PHY[物理声学 librosa<br/>响度 / 质心 / 粗糙度 / SNR]
+    ASR --> LLM[Qwen3-1.7B<br/>语义负面 / 唤醒]
+    ASR --> LEX[jieba + 词典<br/>极性统计]
+    ASR -. 时间戳 .-> PRO
+    E2V & PRO & PAN & PHY & LLM & LEX --> FUS[加权融合<br/>动态权重 · 降级]
+    PHY -. SNR .-> FUS
+    FUS --> VA[Negative / Valence / Arousal<br/>四象限软隶属度]
+    VA --> STIM[声刺激参数<br/>软混合 · 象限策略]
+    STIM --> SYN[合成：谐和音 → AM → ADSR → 粉噪<br/>RMS 归一 → 峰值限幅 → Haas]
+    SYN --> OUT[播放 / WAV / 历史记录]
+```
+
+完整的算法推导、各模态原理、参数映射依据、证据等级与参考文献见
 **[docs/research_notes.md](./docs/research_notes.md)**。各模块 docstring 也有精炼说明。
+
+## 验证状态
+
+本仓库的方法学**未经自然情绪语料验证**。已完成的验证与其边界如下，完整结果见
+**[docs/evaluation.md](./docs/evaluation.md)**，每处方法学的证据等级见
+**[docs/research_notes.md](./docs/research_notes.md)**。
+
+| 层 | 语料（许可） | 验证什么 | 状态 |
+|----|------------|---------|------|
+| 1 | AISHELL-3（Apache-2.0，情绪中性朗读） | 韵律 z-score 基准 μ/σ 实测替换凭空常数；Paraformer 字错率；中性语音上的输出是否居中 | 已完成 |
+| 2 | CSEMOTIONS（Apache-2.0，专业配音员表演型情绪） | 7 类情绪的 V-A 方向一致性、象限混淆矩阵、6 模态消融、动态权重开关 | 已完成 |
+| 3 | 合成受控信号（无外部数据） | 各模块对 F0 / 语速 / HNR / 粗糙度操控的响应方向；干预分支方向；跨象限连续性 | 进 CI |
+
+已知边界：表演型情绪比自然情绪夸张，会**高估**真实表现；录音棚音质无法检验噪声鲁棒性；
+ASR 置信度为文本长度代理指标；融合权重与 V-A 锚点为启发式，未经学习。
+
+复跑：`pip install -r requirements-eval.txt` 后依次 `python scripts/evaluate.py calibrate | neutral | emotion | report`
+（评测数据运行时按需下载到 `portable_data/eval/`，仓库不分发任何音频）。
+
 
 ## 项目结构
 
@@ -116,8 +165,9 @@ mandarin-emo-stim/
 │   ├── storage/       # SQLite 历史记录 + 导出
 │   └── gui/           # 暖奶油主题界面（theme.py 为唯一调色板）
 ├── resources/         # 字体/图标/情感词表
-├── tests/             # pytest 测试
-├── docs/              # 文档
+├── scripts/           # 模型预下载 / 评测 / 截图 / 布局检查
+├── tests/             # pytest（单元 · 科学行为 · GUI 冒烟 · 布局几何 · GPU）
+├── docs/              # 文档（research_notes · evaluation · 用户/开发者手册 · 界面截图）
 └── portable_data/     # 运行时生成，gitignore 排除（模型/录音/日志）
 ```
 
