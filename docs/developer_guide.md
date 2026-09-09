@@ -53,6 +53,14 @@ src/
 编辑 `config/settings.json` 的 `fusion_weights`。权重和必须为 1。这些权重是启发式默认值（未经学习），
 改动后用 `scripts/evaluate.py emotion` 验证效果。
 
+### 4.1.0 中性校准偏移（v0.2）
+
+`config/modality_calibration.json` 由 `scripts/evaluate.py neutral` 在 AISHELL-3 中性语音上实测生成
+（offset = 0.5 − 各模态原始均值，钳制 ±0.3），`WeightedFusion` 融合前对每个模态加该偏移。改动任一
+模态的打分公式后**必须重跑 `neutral`** 重新生成，否则校准会把新公式的输出推偏。`settings.json`
+的 `fusion_calibration.enabled=false` 可关闭；分析结果同时含 `modal_scores_raw`（校准前）与
+`modal_scores`（校准后）。
+
 ### 4.1.1 韵律基准值
 
 `config/prosody_norms.json` 由 `scripts/evaluate.py calibrate` 在 AISHELL-3 上实测生成（含 mixed / female /
@@ -60,6 +68,10 @@ male 三组）。`src/fusion/normalizer.load_prosody_stats(group=...)` 可按性
 `LEGACY_PROSODY_STATS`（早期凭空设定值，仅兜底）。
 
 ### 4.2 扩展情感词表
+
+**可选的维度词典**：把 Chinese EmoBank / CVAW 4.0 的原始 CSV（含 `Word`、`Valence_Mean`、
+`Arousal_Mean` 列）放到 `resources/dictionaries/cvaw.csv`，文本统计模态会自动改用维度评分。该资源
+仅限学术用途，需自行同意其条款下载，**不要提交到仓库**（已 gitignore）。
 
 `resources/dictionaries/` 下的词表为纯文本（每行一个词），可直接追加。程度副词格式为 `词<TAB>权重`。
 

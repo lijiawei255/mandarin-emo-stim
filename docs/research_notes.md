@@ -76,7 +76,17 @@ FunASR 1.0.25 的 `Paraformer.inference` 内部计算了 token 级 `am_scores` �
 返回结果中暴露，故无法低成本获得真实置信度。该代理指标只能捕捉「转写为空/
 极短/大量重复」这类粗粒度失败，对语义级错误无感知。
 
-### 2.4 降级行为
+### 2.4 中性校准（基线归一化）[实测]（v0.2）
+
+各模态的绝对分在情绪中性语音上并不落在 0.5：v0.1 在 AISHELL-3 上实测 text_llm 负面
+0.66、physical 负面 0.60 / 唤醒 0.34、text_stat 唤醒 0.17，导致 62% 的中性语音被判入
+Q3。v0.2 起融合前对每个模态加常数偏移 offset = 0.5 − 中性均值（`config/modality_calibration.json`，
+由 `scripts/evaluate.py neutral` 在 AISHELL-3 校准集上实测，钳制 ±0.3）。这是情感计算
+中常规的说话人/语料基线归一化思路（Schuller et al. 2011 的 speaker normalization 即同类做法）；
+它只平移均值，不改变各模态内部的相对排序。可在 `settings.json` 的 `fusion_calibration.enabled`
+关闭；结果同时返回校准前后的模态分（`modal_scores_raw` / `modal_scores`）。
+
+### 2.5 降级行为
 
 任一模态异常（模型推理失败、标签表缺失等）时，该模态以中性分 (0.5, 0.5)
 参与融合，并在结果的 `degraded_modalities` 中列出；GUI 与 CLI 都会如实展示。
@@ -133,7 +143,10 @@ emotion2vec+ [文献: Ma et al. 2024] 基于 data2vec 自监督预训练，从�
 - **HNR（谐波噪声比）**：HNR 低=气声/粗糙（悲伤、紧张、压抑），故负面分用
   反向。聚合时**保留合法的负值帧**（噪声大于谐波的帧），仅排除 Praat 的
   -200 dB 无定义哨兵。
-- **Jitter / Shimmer**：基频/振幅微扰，情绪激动或嗓音紧张时升高。
+- **Jitter / Shimmer**：基频/振幅微扰，情绪激动或嗓音紧张时升高。v0.2 起同时
+  进入**唤醒分**（各 0.10）：Banse & Scherer (1996) 报告恐惧/紧张语音的微扰升高；
+  v0.1 的唤醒线索只有能量与语速，抓不住「低声屏息」型恐惧（CSEMOTIONS 上
+  fearful 的唤醒均值仅 0.52）。
 
 **z-score 参考值 [实测，见 §5]**：各指标先按 `config/prosody_norms.json`
 中的 μ/σ 做 z-score 归一化到 [0,1]，再按子权重加权（子权重为 [启发式]）。
@@ -160,6 +173,9 @@ PANNs CNN10 [文献: Kong et al. 2020] 在 AudioSet 上训练，识别 527 类�
 - **响度 RMS**、**频谱质心**：高唤醒 → 更响、更亮。
 - **高频能量比**：过高(刺耳)/过低(沉闷)都偏负面，故用 |norm-0.5|*2。
 - **SNR**：信号帧 vs 噪声帧功率比，同时用于动态权重。
+- 聚合（v0.2）：负面分 = 0.4·粗糙度 + 0.3·(1−SNR) + 0.3·高频极端度，权重和为 1；
+  v0.1 含固定项 0.3·0.5，使干净语音的负面分恒 ≥ 0.15 且无法被特征抵消，已去掉，
+  绝对偏置交由 §2.4 的中性校准处理。
 - **频谱粗糙度 roughness**：基于 Plomp & Levelt (1965) 与 Sethares (1993)
   的感觉不协和模型——相邻分量在 20–150 Hz 拍频内产生「粗糙」感。本实现取
   显著峰对，按拍频的高斯权重（峰值约 70 Hz）加权求和，是原模型的**简化版**
@@ -167,7 +183,10 @@ PANNs CNN10 [文献: Kong et al. 2020] 在 AudioSet 上训练，识别 527 类�
 
 ### 3.5 文本语义（`src/models/llm_model.py`）
 
-Qwen3-1.7B 经 few-shot prompt 输出两个 0–1 浮点数（负面分、唤醒度）。
+Qwen3-1.7B 经 few-shot prompt 输出两个 0–1 浮点数（负面分、唤醒度）。v0.2 的
+系统提示明确「无情绪的事实陈述两个值都应接近 0.5」，few-shot 加入两条中性陈述
+与一条平静正面例子——v0.1 只有 4 条例子且无中性样本，模型对 AISHELL-3 中性
+文本给出 0.66 的负面分，是绝对偏置的最大来源。
 **首次调用 greedy 解码**（确定性，同一输入结果可复现），解析失败才低温采样
 重试一次，二次失败降级为文本统计分。1.7B 小模型对精确数值评分能力有限，
 few-shot 示例用于约束输出量纲；文本语义只是 6 模态之一。
@@ -180,9 +199,11 @@ few-shot 示例用于约束输出量纲；文本语义只是 6 模态之一。
 **方法学出处 [文献]**：中文词汇的维度情感规范见 Chinese EmoBank / CVAW
 （Yu et al. 2016；Lee et al. 2022），提供 5,512 个中文词的 Valence-Arousal
 九点量表评分。**本项目自建的 `resources/dictionaries/` 是极性词表（正/负），
-不是 V-A 规范表**——因此文本统计的唤醒度只能由标点、第一人称占比、短句率
-等浅层线索近似 [启发式]。二次开发者可用 CVAW（仅限学术用途，需同意其条款）
-替换为真正的维度词典。
+不是 V-A 规范表**。v0.2 起：若用户把 CVAW 4.0 原始 CSV 放到
+`resources/dictionaries/cvaw.csv`（仅限学术用途，需自行同意其条款，仓库不分发），
+文本统计会用其 V-A 均值直接估计维度分并与极性法各半融合；否则唤醒度由标点、
+程度副词密度、第一人称占比等浅层线索以 0.5 为基线上下调整 [启发式]
+（v0.1 的公式基线为 0.1，陈述句恒为低唤醒，已修正）。
 
 ---
 
@@ -317,3 +338,4 @@ calibrate` 在 **AISHELL-3**（Apache-2.0，218 位普通话说话人的情绪�
 20. Shi, Y., et al. (2021). AISHELL-3: A multi-speaker Mandarin TTS corpus. *Interspeech 2021*.
 21. AIDC-AI (2025). CSEMOTIONS: A Mandarin emotional speech dataset. Hugging Face `AIDC-AI/CSEMOTIONS`（Apache-2.0；NOTICE 声明含 HLTSingapore ESD 衍生内容）。
 22. Schönwiesner, M., & Bialas, O. (2021). slab: An easy to learn Python package for psychoacoustic experiments. *JOSS*, 6(62), 3284.
+23. Schuller, B., Batliner, A., Steidl, S., & Seppi, D. (2011). Recognising realistic emotions and affect in speech: State of the art and lessons learnt from the first challenge. *Speech Communication*, 53(9–10), 1062–1087.

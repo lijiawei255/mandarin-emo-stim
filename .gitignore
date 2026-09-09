@@ -35,5 +35,8 @@ tests/fixtures/*.m4a
 tests/fixtures/*_local.*
 tests/fixtures/personal_*
 
+# ---- 用户自行获取的第三方词典（CVAW，仅限学术用途，不随仓库分发）----
+resources/dictionaries/cvaw.csv
+
 # ---- 与本项目无关的本地工具 ----
 scripts/lit_search.py
