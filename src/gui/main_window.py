@@ -11,7 +11,9 @@
     底   : 声刺激生成与波形（按钮 + 波形 + 音量）
     底栏 : 状态指示（运行状态 / 推理模式 / 模型进度）
 
-多线程：模型加载 / 分析 / 刺激生成均在工作线程，通过 Signal 更新 UI。
+线程模型：**模型加载在主线程分阶段执行**（QTimer.singleShot 串联，阶段间
+processEvents 刷新浮层；原因见 ``start_model_loading`` docstring：CUDA 上下文
+跨 QThread 会段错误）；分析与刺激生成在 QThread 工作线程，通过 Signal 更新 UI。
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from src import portable
 from src.audio.loader import save_wav
 from src.audio.recorder import AudioRecorder
 from src.config_loader import load_settings
-from src.gui.threads import (AnalysisWorker, ModelLoadWorker, StimulusWorker)
+from src.gui.threads import AnalysisWorker, StimulusWorker
 from src.gui.widgets.loading_overlay import LoadingOverlay
 from src.gui.widgets.metric_bar import MetricBar
 from src.gui.widgets.modal_bars import ModalBars
@@ -43,7 +45,7 @@ logger = logging.getLogger("mandarin_emo_stim.gui")
 
 
 class MainWindow(QMainWindow):
-    """构成主义风格主窗口。"""
+    """主窗口（四分区：输入 / 核心指标 / 多模态分解 / 声刺激 + 状态栏）。"""
 
     def __init__(self, config: dict | None = None, auto_load_models: bool = True):
         super().__init__()
@@ -63,7 +65,6 @@ class MainWindow(QMainWindow):
         self.record_timer.timeout.connect(self._update_record_elapsed)
 
         # 工作线程强引用（避免被 GC 导致 QThread destroyed 崩溃）
-        self.model_worker: ModelLoadWorker | None = None
         self.analysis_worker = None
         self.stim_worker = None
 
@@ -71,7 +72,6 @@ class MainWindow(QMainWindow):
         self.loading_overlay = LoadingOverlay(self)
 
         self._build_ui()
-        self._connect_workers_slots()
 
         if auto_load_models:
             QTimer.singleShot(100, self.start_model_loading)
@@ -84,16 +84,16 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 上半部：红 | 白 | 蓝 三栏
+        # 上半部：输入 | 核心指标 | 多模态分解 三栏
         top = QHBoxLayout()
         top.setSpacing(0)
-        top.addWidget(self._build_red_panel(), 1)
-        top.addWidget(self._build_main_panel(), 3)
-        top.addWidget(self._build_blue_panel(), 2)
+        top.addWidget(self._build_input_panel(), 1)
+        top.addWidget(self._build_metrics_panel(), 3)
+        top.addWidget(self._build_modal_panel(), 2)
         root.addLayout(top, 3)
 
-        # 下半部：黄色刺激区
-        root.addWidget(self._build_yellow_panel(), 2)
+        # 下半部：声刺激区
+        root.addWidget(self._build_stimulus_panel(), 2)
 
         # 状态块
         self.status_block = StatusBlock()
@@ -109,8 +109,8 @@ class MainWindow(QMainWindow):
         return f
 
     # ----- 音频输入控制区 -----
-    def _build_red_panel(self) -> QWidget:
-        panel = self._panel_frame("RedPanel")
+    def _build_input_panel(self) -> QWidget:
+        panel = self._panel_frame("InputPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
@@ -154,8 +154,8 @@ class MainWindow(QMainWindow):
             return ["（无法枚举设备）"]
 
     # ----- 核心指标区 -----
-    def _build_main_panel(self) -> QWidget:
-        panel = self._panel_frame("MainPanel")
+    def _build_metrics_panel(self) -> QWidget:
+        panel = self._panel_frame("MetricsPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
@@ -184,8 +184,8 @@ class MainWindow(QMainWindow):
         return panel
 
     # ----- 多模态分解区 -----
-    def _build_blue_panel(self) -> QWidget:
-        panel = self._panel_frame("BluePanel")
+    def _build_modal_panel(self) -> QWidget:
+        panel = self._panel_frame("ModalPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 16, 16, 16)
         self.modal_bars = ModalBars()
@@ -193,8 +193,8 @@ class MainWindow(QMainWindow):
         return panel
 
     # ----- 声刺激区 -----
-    def _build_yellow_panel(self) -> QWidget:
-        panel = self._panel_frame("YellowPanel")
+    def _build_stimulus_panel(self) -> QWidget:
+        panel = self._panel_frame("StimulusPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 12, 20, 12)
         layout.setSpacing(8)
@@ -272,10 +272,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     # 事件处理
     # ------------------------------------------------------------------ #
-    def _connect_workers_slots(self) -> None:
-        # 占位：worker 信号在创建时连接
-        pass
-
     def start_model_loading(self) -> None:
         """分阶段在主线程加载模型。
 
@@ -349,23 +345,6 @@ class MainWindow(QMainWindow):
         self.status_block.set_status("就绪")
         self.status_block.set_mode(self.manager.get_device().upper())
         self.status_block.set_model_progress(self.manager.loaded_count, 4)
-        self.loading_overlay.show_done()
-        self.btn_record.setEnabled(True)
-        self.btn_upload.setEnabled(True)
-        self.btn_generate.setEnabled(False)
-
-    def _on_model_progress(self, stage: str, pct: int) -> None:
-        """（保留，供可能的 worker 模式兼容）"""
-        self.status_block.set_status(f"加载：{stage} {pct}%")
-        self.status_block.set_model_progress(min(3, pct // 25), 4)
-        self.loading_overlay.update_progress(stage, pct)
-
-    def _on_models_loaded(self, manager) -> None:
-        """（保留兼容：主线程模式下由 _on_models_loaded_main_thread 替代）"""
-        self.manager = manager
-        self.status_block.set_status("就绪")
-        self.status_block.set_mode(manager.get_device().upper())
-        self.status_block.set_model_progress(manager.loaded_count, 4)
         self.loading_overlay.show_done()
         self.btn_record.setEnabled(True)
         self.btn_upload.setEnabled(True)
@@ -721,7 +700,7 @@ class MainWindow(QMainWindow):
         try:
             # 关键：若有工作线程仍在运行，先请求中断并等待其退出，
             # 否则 QThread 被销毁时会触发 "Destroyed while thread is still running" 崩溃。
-            for worker in (self.model_worker, self.analysis_worker, self.stim_worker):
+            for worker in (self.analysis_worker, self.stim_worker):
                 if worker is not None and worker.isRunning():
                     worker.requestInterruption()
                     worker.quit()

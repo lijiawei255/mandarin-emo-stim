@@ -1,6 +1,7 @@
 """GUI 工作线程（QThread + Signal）。
 
-避免在主线程执行耗时的模型加载、分析与播放，保持界面响应。
+分析与刺激生成在工作线程执行以保持界面响应。模型加载**不在**此处：
+CUDA 上下文跨线程会触发段错误，故由 MainWindow 在主线程分阶段加载。
 """
 
 from __future__ import annotations
@@ -11,41 +12,11 @@ from typing import Any
 import numpy as np
 from PySide6.QtCore import QThread, Signal
 
-from src.models.model_manager import ModelManager
+from src.models.model_manager import ModelManager  # noqa: F401  (类型注解)
 from src.pipeline import AnalysisPipeline
 from src.stimulus.generator import StimulusGenerator
 
 logger = logging.getLogger("mandarin_emo_stim.threads")
-
-
-class ModelLoadWorker(QThread):
-    """模型加载工作线程。"""
-    progress = Signal(str, int)   # (阶段名, 进度%)
-    finished_ok = Signal(object)  # ModelManager
-    failed = Signal(str)
-    interrupted = Signal()        # 用户中断
-
-    def __init__(self, config: dict | None = None, parent=None):
-        super().__init__(parent)
-        self.config = config
-
-    def run(self) -> None:
-        def _cb(stage: str, pct: int) -> None:
-            # 用户请求中断时抛出，终止加载（在各阶段之间检查）
-            if self.isInterruptionRequested():
-                raise InterruptedError()
-            self.progress.emit(stage, pct)
-
-        try:
-            mgr = ModelManager(config=self.config)
-            mgr.load_all(progress_cb=_cb)
-            self.finished_ok.emit(mgr)
-        except InterruptedError:
-            logger.info("模型加载被用户中断")
-            self.interrupted.emit()
-        except Exception as e:  # noqa: BLE001
-            logger.exception("模型加载失败")
-            self.failed.emit(str(e))
 
 
 class AnalysisWorker(QThread):

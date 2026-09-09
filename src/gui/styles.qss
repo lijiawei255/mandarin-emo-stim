@@ -15,17 +15,17 @@ QWidget {
 }
 
 /* ===== 面板卡片（统一的浅色分区） ===== */
-QFrame#RedPanel, QFrame#MainPanel, QFrame#BluePanel, QFrame#YellowPanel {
+QFrame#InputPanel, QFrame#MetricsPanel, QFrame#ModalPanel, QFrame#StimulusPanel {
     background-color: #FFFFFF;
     border: 1px solid #D9D9D9;
     border-radius: 0px;
 }
 /* 输入控制区：浅灰底，与主区区分 */
-QFrame#RedPanel {
+QFrame#InputPanel {
     background-color: #F5F5F7;
 }
 /* 多模态分解区：浅灰底 */
-QFrame#BluePanel {
+QFrame#ModalPanel {
     background-color: #F5F5F7;
 }
 
@@ -83,7 +83,7 @@ QLabel#SectionTitle {
 }
 
 /* 输入控制区内的标签：深色文字（浅灰底上） */
-QFrame#RedPanel QLabel, QFrame#BluePanel QLabel {
+QFrame#InputPanel QLabel, QFrame#ModalPanel QLabel {
     color: #1A1A1A;
 }
 
