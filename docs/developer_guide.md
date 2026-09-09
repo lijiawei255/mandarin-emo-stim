@@ -25,7 +25,7 @@ src/
 ├── fusion/              # 归一化 + 加权融合 + 象限判定
 ├── stimulus/            # 声刺激参数映射 + 合成 + 播放
 ├── storage/             # SQLite历史 + 导出
-└── gui/                 # 浅色包豪斯PySide6界面
+└── gui/                 # 暖奶油主题 PySide6 界面（theme.py 为唯一调色板）
 ```
 
 ## 3. 数据流

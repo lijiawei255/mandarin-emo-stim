@@ -28,7 +28,7 @@ With just a microphone, the tool:
 - **Fully offline**: Once all models and runtime data are downloaded, no network connection is required.
 - **Multi-modal fusion**: Acoustic emotion (emotion2vec), prosody (parselmouth), paralinguistic events (PANNs), physical acoustics (librosa), text semantics (Qwen3), text statistics (jieba).
 - **Differentiated stimuli**: Continuous acoustic-parameter mapping from four-quadrant anchors, soft-blended to avoid abrupt hard switching.
-- **Light Bauhaus GUI**: PySide6 + pyqtgraph, light background, limited palette, geometric grid, high contrast, function-first.
+- **Warm-ivory GUI**: PySide6 + pyqtgraph, ivory background with a single terracotta accent; every colour comes from `src/gui/theme.py`, text contrast chosen to WCAG AA, layout verified by a 3-resolution × 3-state geometry check.
 - **Green & portable**: All data stays under `portable_data/` in the project directory; deleting the folder removes everything.
 - **License-compliant**: Apache License 2.0, compatible with all upstream models and dependencies.
 
@@ -83,7 +83,8 @@ See `docs/developer_guide.md` for details.
 
 ## Acoustic safety
 
-- Stimulus peak level is capped at **-10 dBFS** (≈ 70–75 dB SPL, normal conversation volume), with no hearing-damage risk.
+- Generated audio is **digitally peak-limited** to -10 dBFS and RMS-normalised to [-30, -10] dBFS. **dBFS is relative to digital full scale; the actual sound-pressure level depends entirely on your playback device and system volume, and this software cannot guarantee any SPL.**
+- Start at a low volume and increase gradually; if you need strict SPL control, calibrate the playback chain with a sound-level meter.
 - Headphones are recommended for the best experience (optional; speakers are also safe).
 
 ## Algorithm overview

@@ -1,13 +1,19 @@
 # 科研依据与方法学说明
 
-本文档是项目的**算法原理总参考**，供二次开发者快速理解「为什么这么算」。
-代码中各模块的 docstring 有更精炼的对应说明，本文是展开版。
+本文档是项目的**算法原理总参考**，供二次开发者理解「为什么这么算」以及
+「哪些是有文献支撑的、哪些是本项目的工程启发式」。代码中各模块的 docstring
+有精炼的对应说明，本文是展开版。
+
+> **阅读约定**：每处方法学都标注证据等级——
+> **[文献]** 有具体出处支持；**[启发式]** 本项目设定、方向与文献一致但数值
+> 未经实证；**[实测]** 由本仓库 `scripts/evaluate.py` 在公开语料上测得。
+> 完整的实测结果与局限性见 [evaluation.md](./evaluation.md)。
 
 ---
 
-## 1. 理论框架：Russell 情绪环模型
+## 1. 理论框架：Russell 情绪环模型 [文献]
 
-本工具的核心理论依据是 Russell (1980) 的情绪环模型（Circumplex Model of Affect），
+核心理论依据是 Russell (1980) 的情绪环模型（Circumplex Model of Affect），
 将情绪映射到二维连续平面：
 
 - **Valence（效价）**：正负向，从极度负面(0)到极度正面(1)。
@@ -30,29 +36,31 @@
 
 ## 2. 多模态情感计算：6 模态加权融合
 
-### 2.1 为何多模态
+### 2.1 为何多模态 [文献]
 
-单一模态鲁棒性有限：声学受环境噪声/口音干扰，文本受 ASR 错误影响。本项目借鉴
-多模态情感计算（Multimodal Sentiment Analysis）的可靠性原则——**声学 + 文本双通道
-互补**，并按信号质量动态调整各模态信任度。
+单一模态鲁棒性有限：声学受环境噪声/口音干扰，文本受 ASR 错误影响。多模态
+情感计算的综述（Poria et al. 2017）系统总结了「声学 + 文本」互补融合优于单
+模态的证据。本项目采用晚期融合（各模态独立打分再加权）。
 
 ### 2.2 六模态
 
 | 模态 | 模型/方法 | 捕捉的情感线索 | 默认权重(negative/arousal) |
 |------|----------|---------------|--------------------------|
 | acoustic | emotion2vec_plus_large | 深层声学情感表征（语调/音色综合） | 0.30 / 0.35 |
-| prosody | praat-parselmouth | F0/节奏/HNR/Jitter/Shimmer | 0.15 / 0.25 |
+| prosody | praat-parselmouth | F0/F0 斜率/语速/HNR/Jitter/Shimmer | 0.15 / 0.25 |
 | paralang | PANNs CNN10 | 笑/哭/尖叫等副语言事件 | 0.10 / 0.15 |
 | physical | librosa/scipy | 响度/频谱质心/粗糙度 | 0.05 / 0.10 |
 | text_llm | Qwen3-1.7B | 语义层负面情绪 | 0.30 / 0.10 |
 | text_stat | jieba+词典 | 词法层情感极性 | 0.10 / 0.05 |
 
-**权重设计依据**：负面分(negative)中文本权重高（语义直接表达负面情绪），
-唤醒分(arousal)中声学权重高（唤醒主要由声学能量/节奏/语速体现）。
+**权重来源 [启发式]**：负面分中文本权重高（语义直接表达负面），唤醒分中
+声学权重高（唤醒主要由声学能量/节奏/语速体现，Juslin & Laukka 2003 的元分析
+支持这一方向）。**具体数值由本项目设定，未经数据学习**；各模态单独的判别力
+与融合增益见 evaluation.md 的消融实验。
 
-### 2.3 动态权重调整（鲁棒性核心）
+### 2.3 动态权重调整（鲁棒性设计）[启发式]
 
-固定权重在信号质量变化时会失效。本项目按信号质量**自适应**调整（见
+固定权重在信号质量变化时会失效。本项目按信号质量自适应调整（见
 `src/fusion/weighted_fusion.py`）：
 
 1. **低 SNR（音频噪声大）**：声学模态受污染不可信 → 衰减声学权重，转移给文本模态。
@@ -60,8 +68,19 @@
 3. **极端情况（SNR<5dB 且 ASR<0.3）**：两通道都不可信 → 所有模态平均(各 1/6)。
 4. **强副语言事件（如尖叫 conf>0.8）**：强情感信号 → 副语言权重 ×1.5 放大。
 
-每次调整后**重新归一化**，确保权重和恒为 1。这一机制使整体估计对噪声/口音/
-ASR 错误更鲁棒——这是相比固定权重融合的关键改进。
+每次调整后重新归一化，确保权重和恒为 1。
+
+**须知的薄弱环节**：规则 2 依赖的「ASR 置信度」**不是模型输出的后验概率**，
+而是由转写文本长度与重复率估计的**代理指标**（`ASRModel._estimate_confidence`）。
+FunASR 1.0.25 的 `Paraformer.inference` 内部计算了 token 级 `am_scores` 但不在
+返回结果中暴露，故无法低成本获得真实置信度。该代理指标只能捕捉「转写为空/
+极短/大量重复」这类粗粒度失败，对语义级错误无感知。
+
+### 2.4 降级行为
+
+任一模态异常（模型推理失败、标签表缺失等）时，该模态以中性分 (0.5, 0.5)
+参与融合，并在结果的 `degraded_modalities` 中列出；GUI 与 CLI 都会如实展示。
+仅「加载音频」与「融合」失败会中止分析。
 
 ---
 
@@ -69,11 +88,11 @@ ASR 错误更鲁棒——这是相比固定权重融合的关键改进。
 
 ### 3.1 emotion2vec：离散情绪 → 连续 V-A（`src/models/emotion_model.py`）
 
-emotion2vec 基于数据2vec 自监督预训练，从原始波形提取情感相关深层表征，输出 9 类
-离散情绪的 softmax 置信度。
+emotion2vec+ [文献: Ma et al. 2024] 基于 data2vec 自监督预训练，从原始波形
+提取情感相关深层表征，输出 9 类离散情绪的 softmax 置信度。
 
-**关键步骤**：把 9 类离散情绪投影到 Russell V-A 平面。依据心理学文献中各类情绪的
-实证锚点（`config/emotion_mapping.json`）：
+**关键步骤**：把 9 类离散情绪投影到 Russell V-A 平面（`config/emotion_mapping.json`
+的 n_base / a_base）：
 
 | 情绪 | n_base(负面) | a_base(唤醒) | 说明 |
 |------|-------------|-------------|------|
@@ -82,67 +101,88 @@ emotion2vec 基于数据2vec 自监督预训练，从原始波形提取情感相
 | disgusted | 0.80 | 0.70 | 高负中唤 |
 | sad | 0.80 | 0.20 | 高负**低**唤（与愤怒区分） |
 | happy | 0.10 | 0.75 | 低负(正)高唤 |
-| surprised | 0.55 | 0.90 | 中中高唤 |
+| surprised | 0.55 | 0.90 | 效价中性偏负、高唤 |
 | neutral | 0.50 | 0.40 | 中中 |
 
-**聚合**：以各情绪置信度为权重做加权平均（等价于期望值），比 argmax 单类更平滑、
-对模糊边界更鲁棒。
+**锚点来源 [启发式，方向有文献]**：各类情绪在 V-A 平面的**相对位置**（愤怒/
+恐惧高唤醒负效价、悲伤低唤醒负效价、快乐高唤醒正效价）取自 Russell (1980)
+图 2 的环形排列，并与 Warriner et al. (2013) 的 13,915 个英文词 V-A 规范中
+对应情绪词的评分方向一致。**具体数值（如 0.90 / 0.95）是本项目为拉开象限
+距离而设定的，不是任何实验的测量值。** 值得注意的争议：surprise 的效价在
+文献中并不稳定（可正可负），本项目取 0.55 略偏负，评测时对 surprise 单独
+报告、不计入严格象限准确率。
 
-**unknown 收缩**：当 unknown(模型不确定)置信度 > 0.5，结果向中性(0.5)收缩 50%，
-降低不确定样本的贡献。
+**聚合**：以各情绪置信度为权重做加权平均（等价于期望值），比 argmax 单类更
+平滑、对模糊边界更鲁棒。**unknown 收缩**：unknown 置信度 > 0.5 时结果向
+中性(0.5)收缩 50%。
 
 ### 3.2 韵律学（`src/features/prosody.py`）
 
-韵律（prosody）是语音超段层面的声学特征，承载大量情感信息（Juslin & Laukka 2004）：
+韵律（prosody）承载大量情感信息 [文献: Juslin & Laukka 2003 对 104 项语音
+情绪研究的元分析；Banse & Scherer 1996]：
 
-- **F0（基频）均值/范围**：高唤醒情绪 F0 更高、范围更大；低落情绪 F0 低且平。
-- **语速 speech_rate**：焦虑/紧张常加快，抑郁常减慢。
+- **F0 均值/范围/标准差**：高唤醒情绪 F0 更高、范围更大；低落情绪 F0 低且平。
+- **F0 斜率（f0_slope，Hz/s）**：有声帧 F0 对时间的线性回归斜率。悲伤语音的
+  F0 轮廓更平且下降 [Banse & Scherer 1996]，故负斜率增加负面分。
+  > 早期版本用 std_f0 冒充「f0_drop」，已修正。
+- **语速 speech_rate（音节/秒）**：焦虑/紧张常加快，抑郁常减慢。**优先由
+  Paraformer 的字级时间戳计算**（字数 / 时间戳并集时长，中文一字一音节），
+  这接近 de Jong & Wempe (2009) 以音节核计数的标准定义；无时间戳时回退到
+  能量包络穿越法（粗略）。
 - **停顿占比 pause_ratio**：犹豫、抑郁时静音段增多。
-- **HNR（谐波噪声比）**：反映嗓音「干净度」。HNR 低=气声/粗糙（悲伤、紧张、压抑）。
-  故负面分用 1/HNR（越低越负面）。
-- **Jitter（基频微扰）**：相邻周期 F0 的微小波动。>3% 为病理/强情绪。
-- **Shimmer（振幅微扰）**：相邻周期振幅波动。情绪激动/疲惫时升高。
+- **HNR（谐波噪声比）**：HNR 低=气声/粗糙（悲伤、紧张、压抑），故负面分用
+  反向。聚合时**保留合法的负值帧**（噪声大于谐波的帧），仅排除 Praat 的
+  -200 dB 无定义哨兵。
+- **Jitter / Shimmer**：基频/振幅微扰，情绪激动或嗓音紧张时升高。
 
-子权重聚合公式见模块 docstring，参考统计量见 `src/fusion/normalizer.py`。
+**z-score 参考值 [实测，见 §5]**：各指标先按 `config/prosody_norms.json`
+中的 μ/σ 做 z-score 归一化到 [0,1]，再按子权重加权（子权重为 [启发式]）。
 
 ### 3.3 副语言事件（`src/models/pann_model.py`）
 
-PANNs（Pretrained Audio Neural Networks）CNN10 在 AudioSet 上训练，能识别 527 类
-声学事件。本项目关注其中与情绪强相关的副语言事件：
+PANNs CNN10 [文献: Kong et al. 2020] 在 AudioSet 上训练，识别 527 类声学事件。
+本项目关注与情绪强相关的副语言事件（贡献值为 [启发式]）：
 
 | 事件 | n_contrib | a_contrib | 含义 |
 |------|-----------|-----------|------|
 | 笑声 Laughter | -0.5 | +0.3 | 正面 |
 | 哭泣 Crying | +0.7 | +0.5 | 高负中唤 |
 | 尖叫 Screaming | +0.3 | +1.0 | 极端唤醒 |
-| 叹息/呼吸 Sigh | +0.4 | -0.3 | 压抑/放松 |
+| 叹息/呼吸 Sigh / Breathing | +0.4 | -0.3 | 压抑/放松 |
 
-聚合按文档公式：以置信度加权累加 n_contrib/a_contrib，再除以 (1+总置信度) 归一化。
-> AudioSet 无独立「Sigh」标签，通过 Breathing 标签近似。
+聚合：以置信度加权累加，再除以 (1+总置信度) 归一化。AudioSet 无独立「Sigh」
+标签，通过 Breathing 近似。标签表随仓库分发（`resources/panns/`，CC BY 4.0）。
 
 ### 3.4 物理声学（`src/features/physical.py`）
 
-底层物理特征（Ilie & Thompson 2006）：
+底层物理特征 [文献: Ilie & Thompson 2006 比较音乐与语音的声学线索]：
 
-- **响度 RMS**、**频谱质心**：见上表。
+- **响度 RMS**、**频谱质心**：高唤醒 → 更响、更亮。
 - **高频能量比**：过高(刺耳)/过低(沉闷)都偏负面，故用 |norm-0.5|*2。
-- **SNR**：信号帧 vs 噪声帧功率比；稳态信号(CV<0.05)视为高 SNR。
-- **频谱粗糙度 roughness**：基于 Sethares (1993) 与 Plomp-Levelt 不协和模型——
-  相邻频率分量在 20-150Hz 拍频内产生「粗糙」不协和感（人耳对 ~70Hz 拍频最敏感）。
-  取频谱显著峰对，按拍频的高斯权重加权求和。
+- **SNR**：信号帧 vs 噪声帧功率比，同时用于动态权重。
+- **频谱粗糙度 roughness**：基于 Plomp & Levelt (1965) 与 Sethares (1993)
+  的感觉不协和模型——相邻分量在 20–150 Hz 拍频内产生「粗糙」感。本实现取
+  显著峰对，按拍频的高斯权重（峰值约 70 Hz）加权求和，是原模型的**简化版**
+  （未按临界带宽随频率缩放）。
 
 ### 3.5 文本语义（`src/models/llm_model.py`）
 
-Qwen3-1.7B 经 few-shot prompt 输出两个 0-1 浮点数（负面分、唤醒度）。
-> 1.7B 小模型对精确数值评分能力有限，故用 few-shot 示例约束输出量纲。实际情感
-> 量化以 6 模态融合为主，LLM 仅作文本语义支路之一。解析失败重试一次，二次失败
-> 降级为文本统计分。
+Qwen3-1.7B 经 few-shot prompt 输出两个 0–1 浮点数（负面分、唤醒度）。
+**首次调用 greedy 解码**（确定性，同一输入结果可复现），解析失败才低温采样
+重试一次，二次失败降级为文本统计分。1.7B 小模型对精确数值评分能力有限，
+few-shot 示例用于约束输出量纲；文本语义只是 6 模态之一。
 
 ### 3.6 文本统计（`src/features/text_stats.py`）
 
-情感词典加权法（Lexicon-based）：分词后查词典判极性，加权求和。
-关键处理：程度副词修饰（前 2 词窗口）、否定词反转（前 3 词窗口，奇数反转、
-偶数双重否定表肯定，反转×0.8 衰减）。
+情感词典加权法（Lexicon-based）：分词后查词典判极性，加权求和；程度副词
+（前 2 词窗口）放大/衰减，否定词（前 3 词窗口）奇数反转、偶数双重否定。
+
+**方法学出处 [文献]**：中文词汇的维度情感规范见 Chinese EmoBank / CVAW
+（Yu et al. 2016；Lee et al. 2022），提供 5,512 个中文词的 Valence-Arousal
+九点量表评分。**本项目自建的 `resources/dictionaries/` 是极性词表（正/负），
+不是 V-A 规范表**——因此文本统计的唤醒度只能由标点、第一人称占比、短句率
+等浅层线索近似 [启发式]。二次开发者可用 CVAW（仅限学术用途，需同意其条款）
+替换为真正的维度词典。
 
 ---
 
@@ -153,9 +193,9 @@ Qwen3-1.7B 经 few-shot prompt 输出两个 0-1 浮点数（负面分、唤醒�
 根据检测到的情绪，生成**差异化**声刺激——非统一放松音，而是针对不同象限给出
 有理论依据的声学干预。
 
-### 4.2 声学参数 → 情绪映射
+### 4.2 声学参数 → 情绪映射 [文献]
 
-依据 Juslin & Laukka 2004、Bresin & Friberg 2011、Ilie & Thompson 2006：
+依据 Juslin & Laukka (2003/2004)、Bresin & Friberg (2011)、Ilie & Thompson (2006)：
 
 | 参数 | 高唤醒 | 低唤醒 | 正面 | 负面 |
 |------|--------|--------|------|------|
@@ -166,20 +206,42 @@ Qwen3-1.7B 经 few-shot prompt 输出两个 0-1 浮点数（负面分、唤醒�
 | 起音 attack | 陡（冲击） | 缓（柔和） | — | — |
 | 谐和结构 | — | — | 大三和弦（协和） | 整数泛音（紧张） |
 
-**反直觉的干预分支**（差异化设计的精髓）：
-- **Q2 焦虑**：高 arousal 反而用**慢脉冲**（引导呼吸放缓，降唤醒干预）。
+**反向干预分支 [设计选择，见 §4.2.1]**：
+- **Q2 焦虑**：高 arousal 反而用**慢脉冲**（0.25–1.0 Hz），意在向呼吸/心率
+  节律靠拢以降唤醒。注意：只有 arousal 接近 1 时脉冲率才降到 0.25 Hz（15 次/
+  分，接近静息呼吸），中等 arousal 时约 0.6 Hz，仍快于呼吸节律。
 - **Q3 抑郁**：低 valence 反而**提 f0**（注入明亮感/能量，激活干预）。
+
+### 4.2.1 与 ISO 原则的关系 [文献，对立证据]
+
+音乐治疗中的 **ISO 原则**（Altshuler 1948）主张先用与当事人当前情绪**匹配**
+的音乐建立共鸣，再逐步过渡到目标情绪。Starcke & von Georgi (2024) 的受控实验
+发现：诱发悲伤后，先听悲伤歌曲再听快乐歌曲（ISO）比连续两首快乐歌曲更有效
+地缓解悲伤。
+
+本项目对 Q2/Q3 采取的是**直接反向调控**（不经匹配阶段），这是一个**有意的
+设计选择**而非文献共识：其优点是单段刺激即可实施、参数映射连续；代价是缺
+少 ISO 的共鸣阶段，对部分个体可能产生「被反驳」的不适。二次开发者若要实现
+ISO 式渐进，可在 `strategies.py` 中先按当前 (v, a) 生成匹配段，再线性插值到
+目标 (v', a') 生成第二段并交叉淡化。**本项目未对两种策略做过对照实验。**
 
 ### 4.3 软混合
 
 按四象限隶属度对锚点参数加权混合（避免象限边界突变），再在主象限内按
-valence/arousal 连续微调（见 `strategies.py::compute_params`）。
+valence/arousal 连续微调（`strategies.py::compute_params`）。
 
 ### 4.4 波形合成（`synthesizer.py`）
 
-谐和音叠加 → 带通塑形 → 振幅调制(AM) → ADSR 包络 → 粉噪混合 →
-安全限幅(-10dBFS) → 淡入淡出 → Haas 立体声（右声道延迟 12ms 产生自然宽度，
-非可闻回声）。
+谐和音叠加 → 带通塑形 → 振幅调制(AM) → ADSR 包络 → 粉噪混合 → **RMS 响度
+归一** → **数字峰值限幅** → 淡入淡出 → Haas 立体声（右声道延迟 12 ms，低于
+回声感知阈值，产生宽度感 [文献: Haas 1951]）。
+
+**粉噪的作用 [启发式，证据有限]**：粉噪（1/f 频谱）在 Q2/Q4 中用于**能量
+遮蔽与频谱填充**，使纯音刺激不显单薄。早期版本曾引用 Söderlund et al. (2007)
+支持「粉噪有平复作用」——该引用**不成立**：那项研究考察的是**白噪**对 ADHD
+儿童**认知表现**的随机共振效应，与放松无关。目前关于色噪声对唤醒的直接证据
+有限：已有瞳孔测量研究未发现不同色噪声对持续唤醒有差异性影响。因此本项目
+**不主张粉噪具有生理平复效应**。
 
 ### 4.5 关于双耳节拍
 
@@ -188,7 +250,11 @@ v1 曾含双耳节拍（Binaural Beats）。v2 基于 Ingendoh et al. (2023) 系
 
 ### 4.6 声音安全
 
-峰值限幅 -10 dBFS（≈70-75 dB SPL，正常交谈音量），无听力损伤风险。
+生成音频的**数字峰值限幅**为 `settings.stimulus.max_peak_dbfs`（默认 -10 dBFS），
+响度按 RMS 归一到 [-30, -10] dBFS。**dBFS 是数字满刻度相对值，实际声压级
+(SPL) 完全取决于播放设备与系统音量，本软件无法保证任何 SPL 数值**。使用者
+应从低音量起听并逐步调到舒适水平；如需严格声压控制，请用声级计校准播放链路。
+早期文档中「≈70–75 dB SPL、无听力损伤风险」的表述不成立，已删除。
 
 ---
 
@@ -202,31 +268,52 @@ z 截断到 [-2, 2]                 # 抑制极端离群点
 norm = (z + 2) / 4              # 映射到 [0, 1]
 ```
 
-参考 mu/sigma 来自中文普通话语料统计（男女混合）。偏离基准的程度即情绪强度。
-> z-score 假设近似正态，对偏态特征（如 Jitter）是近似，工程上足够鲁棒。
+**参考 μ/σ 的来源 [实测]**：`config/prosody_norms.json` 由 `scripts/evaluate.py
+calibrate` 在 **AISHELL-3**（Apache-2.0，218 位普通话说话人的情绪中性朗读语料）
+上分层抽样实测得到，含男女混合与分性别统计、样本量与计算日期。文件缺失时
+回退到代码内的启发式常数（早期版本的凭空设定值，仅作兜底）。
+> z-score 假设近似正态，对偏态特征（如 Jitter）是近似。
 
 ---
 
 ## 6. 局限性（二次开发须知）
 
-- **LLM 文本评分**：1.7B 小模型精度有限，正面文本评分可能偏高。可替换更大 LLM
-  （需调整显存预算）。
+- **未在自然情绪语料上验证**：evaluation.md 的情绪判别验证使用 CSEMOTIONS
+  （专业配音员的**表演型**情绪，录音棚音质），通常比自然情绪更夸张，会
+  **高估**真实场景表现；且无法检验噪声鲁棒性设计（SNR 规则不会触发）。
+- **ASR 置信度是代理指标**（§2.3），动态权重的「低 ASR 置信度」分支很少被
+  正确触发。
+- **权重与锚点未经学习**：融合权重、V-A 锚点、副语言贡献、子权重均为启发式。
+- **LLM 文本评分**：1.7B 小模型精度有限，正面文本评分可能偏高。
 - **副语言事件**：AudioSet 非专为副语言设计，叹息等通过 Breathing 近似。
 - **无微调**：全部预训练模型，未在特定数据微调，个体差异可能影响精度。
 - **单语**：ASR/LLM/词典均针对中文普通话。
+- **干预策略未做对照实验**（§4.2.1）。
 - **科研用途**：本工具用于方法学探索，**不构成临床诊断或治疗手段**。
 
 ---
 
 ## 7. 参考文献
 
-1. Russell, J.A. (1980). A circumplex model of affect. *JPSP*, 39(6), 1161-1178.
-2. Juslin, P.N., & Laukka, P. (2004). Expression, perception, and induction of musical emotions. *JNMR*, 33(3), 217-238.
-3. Bresin, R., & Friberg, A. (2011). Emotion rendering in music. *Cortex*, 47(9), 1068-1081.
-4. Ilie, G., & Thompson, W.F. (2006). A comparison of acoustic cues in music and speech. *Music Perception*, 23(4), 319-330.
-5. Ma, Y., et al. (2024). emotion2vec+: Advancing universal speech emotion representation. *ACL 2024 Findings*.
-6. Sethares, W.A. (1993). Local consonance and the relationship between timbre and scale. *JASA*, 94(3), 1218-1228.
-7. Plomp, R., & Levelt, W.J.M. (1965). Tonal consonance and critical bandwidth. *JASA*, 38(4), 548-560.
-8. Ingendoh, R.M., et al. (2023). Binaural beats to entrain the brain? A systematic review. *PLOS ONE*, 18(5):e0286023.
-9. Soderlund, G., et al. (2007). Listen to the noise: Noise is beneficial for cognitive performance in ADHD. *J Child Psychol Psychiatry*, 48(8), 840-847.
-10. Schönwiesner, M., & Bialas, O. (2021). slab: An easy to learn Python package for psychoacoustic experiments. *JOSS*, 6(62), 3284.
+1. Russell, J.A. (1980). A circumplex model of affect. *Journal of Personality and Social Psychology*, 39(6), 1161–1178.
+2. Juslin, P.N., & Laukka, P. (2003). Communication of emotions in vocal expression and music performance: Different channels, same code? *Psychological Bulletin*, 129(5), 770–814.
+3. Juslin, P.N., & Laukka, P. (2004). Expression, perception, and induction of musical emotions. *Journal of New Music Research*, 33(3), 217–238.
+4. Banse, R., & Scherer, K.R. (1996). Acoustic profiles in vocal emotion expression. *Journal of Personality and Social Psychology*, 70(3), 614–636.
+5. Bresin, R., & Friberg, A. (2011). Emotion rendering in music: Range and characteristic values of seven musical variables. *Cortex*, 47(9), 1068–1081.
+6. Ilie, G., & Thompson, W.F. (2006). A comparison of acoustic cues in music and speech for three dimensions of affect. *Music Perception*, 23(4), 319–330.
+7. Ma, Z., et al. (2024). emotion2vec: Self-supervised pre-training for speech emotion representation. *Findings of ACL 2024*.
+8. Kong, Q., et al. (2020). PANNs: Large-scale pretrained audio neural networks for audio pattern recognition. *IEEE/ACM TASLP*, 28, 2880–2894.
+9. Plomp, R., & Levelt, W.J.M. (1965). Tonal consonance and critical bandwidth. *JASA*, 38(4), 548–560.
+10. Sethares, W.A. (1993). Local consonance and the relationship between timbre and scale. *JASA*, 94(3), 1218–1228.
+11. Haas, H. (1951). Über den Einfluss eines Einfachechos auf die Hörsamkeit von Sprache. *Acustica*, 1, 49–58.
+12. Ingendoh, R.M., Posny, E.S., & Heine, A. (2023). Binaural beats to entrain the brain? A systematic review of the effects of binaural beat stimulation on brain oscillatory activity. *PLOS ONE*, 18(5), e0286023.
+13. Warriner, A.B., Kuperman, V., & Brysbaert, M. (2013). Norms of valence, arousal, and dominance for 13,915 English lemmas. *Behavior Research Methods*, 45, 1191–1207.
+14. Yu, L.-C., Lee, L.-H., Hao, S., et al. (2016). Building Chinese affective resources in valence-arousal dimensions. *NAACL-HLT 2016*, 540–545.
+15. Lee, L.-H., Li, J.-H., & Yu, L.-C. (2022). Chinese EmoBank: Building valence-arousal resources for dimensional sentiment analysis. *ACM TALLIP*, 21(4), 1–18.
+16. Poria, S., Cambria, E., Bajpai, R., & Hussain, A. (2017). A review of affective computing: From unimodal analysis to multimodal fusion. *Information Fusion*, 37, 98–125.
+17. de Jong, N.H., & Wempe, T. (2009). Praat script to detect syllable nuclei and measure speech rate automatically. *Behavior Research Methods*, 41, 385–390.
+18. Starcke, K., & von Georgi, R. (2024). Music listening according to the iso principle modulates affective state. *Musicae Scientiae*, 28(3).
+19. Söderlund, G., Sikström, S., & Smart, A. (2007). Listen to the noise: Noise is beneficial for cognitive performance in ADHD. *Journal of Child Psychology and Psychiatry*, 48(8), 840–847. ——**仅作为被更正的错误引用保留说明，不支持本项目任何主张。**
+20. Shi, Y., et al. (2021). AISHELL-3: A multi-speaker Mandarin TTS corpus. *Interspeech 2021*.
+21. AIDC-AI (2025). CSEMOTIONS: A Mandarin emotional speech dataset. Hugging Face `AIDC-AI/CSEMOTIONS`（Apache-2.0；NOTICE 声明含 HLTSingapore ESD 衍生内容）。
+22. Schönwiesner, M., & Bialas, O. (2021). slab: An easy to learn Python package for psychoacoustic experiments. *JOSS*, 6(62), 3284.
