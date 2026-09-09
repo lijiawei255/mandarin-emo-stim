@@ -1,4 +1,5 @@
 import pytest
+
 """阶段 1 冒烟测试：环境、配置与便携模式可用性。"""
 
 import json
