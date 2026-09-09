@@ -70,7 +70,7 @@ class LoadingOverlay(QWidget):
 
         # 当前阶段（主色）
         self.current_label = QLabel("准备中…")
-        self.current_label.setStyleSheet(self._current_style("accent"))
+        self.current_label.setStyleSheet(self._current_style("accent_text"))
         card_layout.addWidget(self.current_label)
 
         # 4 个阶段的状态列表
@@ -96,14 +96,14 @@ class LoadingOverlay(QWidget):
         if state == "done":
             return inline(font_size="12px", color="success", font_weight="600", border="none")
         if state == "active":
-            return inline(font_size="12px", color="accent", font_weight="700", border="none")
+            return inline(font_size="12px", color="accent_text", font_weight="700", border="none")
         return inline(font_size="12px", color="text_faint", border="none")
 
     def _reset(self) -> None:
         """重置为初始状态。"""
         self.total_bar.setValue(0)
         self.current_label.setText("准备中…")
-        self.current_label.setStyleSheet(self._current_style("accent"))
+        self.current_label.setStyleSheet(self._current_style("accent_text"))
         for i, lbl in enumerate(self.stage_labels):
             _, display = STAGE_LABELS[i]
             lbl.setText(f"○  {display}")

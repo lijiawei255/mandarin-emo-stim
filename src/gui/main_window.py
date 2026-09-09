@@ -171,8 +171,8 @@ class MainWindow(QMainWindow):
 
         self.quadrant_label = QLabel("情绪象限：—")
         self.quadrant_label.setStyleSheet(
-            inline(font_size="18px", font_weight="700", color="accent_dark",
-                   padding="8px 0", border="none")
+            inline(font_size="18px", font_weight="700", color="accent_text",
+                   padding="8px 0 12px 0", border="none")
         )
         layout.addWidget(self.quadrant_label)
 

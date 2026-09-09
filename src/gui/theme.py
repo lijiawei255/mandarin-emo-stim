@@ -27,10 +27,11 @@ PALETTE: dict[str, str] = {
     "accent": "#D97757",
     "accent_dark": "#C4633F",
     "accent_soft": "#F3DED3",  # 强调色的浅底（hover / 禁用主按钮）
-    # 语义状态色（暖调）
-    "success": "#788C5D",
-    "warning": "#B8860B",
-    "error": "#BC4C3C",
+    "accent_text": "#A8502E",  # 强调色用于**文字**时的深化版（白底对比度 ≈ 5.3:1）
+    # 语义状态色（暖调；均按 WCAG AA 在 card / card_alt 底上对比度 ≥ 4.5:1 选定）
+    "success": "#56703F",
+    "warning": "#8A6200",
+    "error": "#B23F2E",
     # 几何
     "radius": "8px",
     "radius_sm": "6px",

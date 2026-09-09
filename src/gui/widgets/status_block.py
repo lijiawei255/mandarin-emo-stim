@@ -40,7 +40,7 @@ class StatusBlock(QFrame):
         elif any(k in status for k in ("失败", "错误", "中断")):
             color = "error"
         elif any(k in status for k in ("中", "加载", "分析", "生成", "录音")):
-            color = "accent"    # 运行中
+            color = "accent_text"    # 运行中
         else:
             color = "text"
         self.status_label.setStyleSheet(

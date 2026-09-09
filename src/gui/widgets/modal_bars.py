@@ -91,9 +91,9 @@ class ModalBars(QWidget):
     def _events_style(active: bool) -> str:
         if active:
             return inline(color="warning", font_weight="600", font_size="12px",
-                          border="none", padding_top="4px")
+                          border="none", padding_top="10px")
         return inline(color="text_muted", font_size="12px", border="none",
-                      padding_top="4px")
+                      padding_top="10px")
 
     def update_events(self, events: list[dict]) -> None:
         """更新副语言事件标签（检测到时用警告色强调）。"""

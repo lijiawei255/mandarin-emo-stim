@@ -21,9 +21,12 @@ QFrame#InputPanel, QFrame#MetricsPanel, QFrame#ModalPanel, QFrame#StimulusPanel 
 QFrame#InputPanel, QFrame#ModalPanel {
     background-color: {{card_alt}};
 }
-/* 卡片内部控件默认透明，继承卡片底色 */
-QFrame#InputPanel QWidget, QFrame#MetricsPanel QWidget,
-QFrame#ModalPanel QWidget, QFrame#StimulusPanel QWidget {
+/* 卡片内的标签与复合容器透明，继承卡片底色。
+   注意不要用 "QFrame#X QWidget" 通配：其特异度高于 "QPushButton#btn_generate"，
+   会把主按钮底色也打成透明（白字消失）。 */
+QFrame#InputPanel QLabel, QFrame#MetricsPanel QLabel,
+QFrame#ModalPanel QLabel, QFrame#StimulusPanel QLabel,
+MetricBar, ModalBars, WaveformView, QSlider {
     background-color: transparent;
 }
 
@@ -58,13 +61,14 @@ QPushButton:checked {
 }
 
 /* 主操作按钮（生成刺激）：实心强调色 */
+/* 白字用 accent_dark 底（对比度 4.0:1）而非 accent（3.1:1） */
 QPushButton#btn_generate {
-    background-color: {{accent}};
+    background-color: {{accent_dark}};
     color: {{card}};
-    border-color: {{accent}};
+    border-color: {{accent_dark}};
 }
 QPushButton#btn_generate:hover {
-    background-color: {{accent_dark}};
+    background-color: {{accent_text}};
     color: {{card}};
 }
 QPushButton#btn_generate:disabled {
