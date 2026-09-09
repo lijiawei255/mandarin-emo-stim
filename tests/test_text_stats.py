@@ -60,6 +60,32 @@ def test_exclamation_raises_arousal():
     assert r_excl.a >= r_no_excl.a
 
 
+def test_plain_statement_arousal_is_centered():
+    """平铺直叙的陈述句唤醒分应接近 0.5（v0.1 恒为 ~0.1–0.2）。"""
+    r = text_stats.analyze("这个城市的地铁一共有十二条线路")
+    assert 0.35 <= r.a <= 0.65
+
+
+def test_cvaw_lexicon_used_when_present(tmp_path, monkeypatch):
+    """存在 cvaw.csv 时用维度词典估计 V-A，并写入 detail。"""
+    from src import portable
+    monkeypatch.setattr(portable, "DICTIONARIES_DIR", tmp_path)
+    (tmp_path / "positive_words.txt").write_text("开心\n", encoding="utf-8")
+    (tmp_path / "negative_words.txt").write_text("痛苦\n", encoding="utf-8")
+    (tmp_path / "negation_words.txt").write_text("不\n", encoding="utf-8")
+    (tmp_path / "degree_adverbs.txt").write_text("非常\t1.5\n", encoding="utf-8")
+    (tmp_path / "cvaw.csv").write_text(
+        "No.,Word,Valence_Mean,Valence_SD,Arousal_Mean,Arousal_SD\n"
+        "1,开心,8.0,0.5,7.0,0.5\n2,痛苦,1.5,0.5,6.5,0.5\n", encoding="utf-8")
+    text_stats._DictLoader.reload()
+    r = text_stats.analyze("我很开心")
+    assert r.detail["cvaw_hits"] == 1
+    assert r.detail["cvaw_negative"] == pytest.approx(1 - 7 / 8)
+    assert r.s < 0.4
+    r2 = text_stats.analyze("我很痛苦")
+    assert r2.s > 0.6 and r2.a > r.a - 0.2
+
+
 def test_detail_populated():
     r = text_stats.analyze("我非常喜欢这个产品")
     assert "total_words" in r.detail

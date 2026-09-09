@@ -135,6 +135,38 @@ def test_fusion_modal_scores_present(fusion):
     assert len(result["modal_scores"]) == 6
 
 
+# ---------------- 中性校准偏移 ----------------
+def test_modality_calibration_applied_and_clamped(tmp_path):
+    import json
+
+    from src.fusion.weighted_fusion import WeightedFusion
+    cfg = json.loads(json.dumps(load_settings()))
+    p = tmp_path / "cal.json"
+    p.write_text(json.dumps({"offsets": {
+        "text_llm": {"negative": -0.15, "arousal": 0.0},
+        "physical": {"negative": -0.9, "arousal": 0.9},   # 超范围 → 钳制到 ±0.3
+    }}), encoding="utf-8")
+    cfg["fusion_calibration"] = {"enabled": True, "path": str(p)}
+    fus = WeightedFusion(cfg)
+    assert fus.offsets["text_llm"] == (-0.15, 0.0)
+    assert fus.offsets["physical"] == (-0.3, 0.3)
+    r = fus.fuse(_all_half_scores())
+    assert r["modal_scores_raw"]["text_llm"]["negative"] == 0.5
+    assert r["modal_scores"]["text_llm"]["negative"] == pytest.approx(0.35)
+    # 禁用后不偏移
+    cfg["fusion_calibration"]["enabled"] = False
+    assert WeightedFusion(cfg).offsets == {}
+
+
+def test_modality_calibration_missing_file_is_noop(tmp_path):
+    import json
+
+    from src.fusion.weighted_fusion import WeightedFusion
+    cfg = json.loads(json.dumps(load_settings()))
+    cfg["fusion_calibration"] = {"enabled": True, "path": str(tmp_path / "nope.json")}
+    assert WeightedFusion(cfg).offsets == {}
+
+
 # ---------------- prosody norms 加载 ----------------
 def test_load_prosody_stats_prefers_file_and_falls_back(tmp_path):
     import json

@@ -54,6 +54,15 @@ def test_lower_hnr_raises_prosodic_negativity():
     assert s_noisy > s_clean
 
 
+def test_jitter_shimmer_raise_prosodic_arousal():
+    """v0.2：基频/振幅微扰升高 → 唤醒升高（恐惧/紧张的嗓音微扰线索，Banse & Scherer 1996）。"""
+    base = dict(mean_f0=180.0, std_f0=25.0, f0_range=80.0, speech_rate=4.5,
+                pause_ratio=0.25, hnr=15.0, duration=2.0, f0_slope=0.0)
+    calm = prosody.ProsodyFeatures(jitter_local=0.01, shimmer_local=0.06, **base)
+    tremor = prosody.ProsodyFeatures(jitter_local=0.04, shimmer_local=0.16, **base)
+    assert prosody.score(tremor)[1] > prosody.score(calm)[1]
+
+
 # ---------------- 物理声学：粗糙度 ----------------
 def test_beating_dyad_is_rougher_than_pure_tone():
     """拍频 70 Hz 的双音 roughness 高于纯音（Plomp & Levelt 1965 / Sethares 1993）。"""

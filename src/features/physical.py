@@ -160,7 +160,9 @@ def score(feat: PhysicalFeatures) -> tuple[float, float, dict[str, Any]]:
     norm_roughness = clip01(feat.roughness / 0.3)
     norm_hf_extreme = abs(norm_hf - 0.5) * 2  # 过多/过少高频都增负面
 
-    s_physical = 0.3 * norm_roughness + 0.2 * (1 - norm_snr) + 0.2 * norm_hf_extreme + 0.3 * 0.5
+    # v0.2：去掉 v0.1 的固定项 0.3·0.5（它使干净语音的负面分恒 ≥0.15 且无法被特征抵消）；
+    # 各项权重和为 1，绝对偏置由融合层的中性校准（config/modality_calibration.json）处理。
+    s_physical = 0.4 * norm_roughness + 0.3 * (1 - norm_snr) + 0.3 * norm_hf_extreme
     a_physical = 0.35 * norm_loudness + 0.25 * norm_centroid + 0.20 * norm_hf + 0.20 * norm_roughness
 
     detail = {

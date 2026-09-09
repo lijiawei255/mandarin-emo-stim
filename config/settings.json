@@ -1,19 +1,19 @@
 {
   "fusion_weights": {
     "negative": {
-      "acoustic": 0.30,
+      "acoustic": 0.3,
       "prosody": 0.15,
-      "paralang": 0.10,
+      "paralang": 0.1,
       "physical": 0.05,
-      "text_llm": 0.30,
-      "text_stat": 0.10
+      "text_llm": 0.3,
+      "text_stat": 0.1
     },
     "arousal": {
       "acoustic": 0.35,
       "prosody": 0.25,
       "paralang": 0.15,
-      "physical": 0.10,
-      "text_llm": 0.10,
+      "physical": 0.1,
+      "text_llm": 0.1,
       "text_stat": 0.05
     }
   },
@@ -61,5 +61,9 @@
   "history": {
     "max_records": 200,
     "auto_export_on_clear": true
+  },
+  "fusion_calibration": {
+    "enabled": true,
+    "path": "config/modality_calibration.json"
   }
 }

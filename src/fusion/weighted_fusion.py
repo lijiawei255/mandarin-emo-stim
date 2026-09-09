@@ -24,12 +24,21 @@
     3. 强副语言事件（如尖叫 confidence>0.8）：副语言是强情感信号，权重×1.5放大。
 每次调整后重新归一化，确保权重和恒为 1。
 
+【中性校准】（v0.2）各模态的绝对分在情绪中性语音上并不落在 0.5：v0.1 在 AISHELL-3
+上实测 text_llm 负面 0.66、physical 负面 0.60 / 唤醒 0.34、text_stat 唤醒 0.17，导致
+62% 的中性语音被判入 Q3。融合前按 ``config/modality_calibration.json`` 给每个模态
+加一个常数偏移（offset = 0.5 − 中性均值，由 ``scripts/evaluate.py neutral`` 在
+校准集上实测），这是情感计算中常规的「基线归一化」。可在 settings.json 的
+``fusion_calibration.enabled`` 关闭；结果同时返回校准前后的模态分。
+
 【输出】加权求和得 Negative/Arousal，Valence = 1 - Negative（负向效价度量），
 再由 quadrant.py 做软象限判定。
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from src.fusion.quadrant import (
@@ -60,6 +69,7 @@ class WeightedFusion:
         self.mid_v = thr["quadrant_mid_v"]
         self.mid_a = thr["quadrant_mid_a"]
         self.band = thr["quadrant_band"]
+        self.offsets: dict[str, tuple[float, float]] = load_modality_calibration(config)
 
     # ------------------------------------------------------------------ #
     # 动态权重调整
@@ -167,12 +177,17 @@ class WeightedFusion:
         negative = 0.0
         arousal = 0.0
         modal_scores: dict[str, dict[str, float]] = {}
+        modal_scores_raw: dict[str, dict[str, float]] = {}
         for m in MODALITIES:
-            s, a = modality_scores.get(m, (0.5, 0.5))
-            s = max(0.0, min(1.0, float(s)))
-            a = max(0.0, min(1.0, float(a)))
+            s0, a0 = modality_scores.get(m, (0.5, 0.5))
+            s0 = max(0.0, min(1.0, float(s0)))
+            a0 = max(0.0, min(1.0, float(a0)))
+            ds, da = self.offsets.get(m, (0.0, 0.0))
+            s = max(0.0, min(1.0, s0 + ds))
+            a = max(0.0, min(1.0, a0 + da))
             negative += w_s[m] * s
             arousal += w_a[m] * a
+            modal_scores_raw[m] = {"negative": s0, "arousal": a0}
             modal_scores[m] = {"negative": s, "arousal": a}
 
         negative = max(0.0, min(1.0, negative))
@@ -190,5 +205,35 @@ class WeightedFusion:
             "dominant_quadrant": dominant_quadrant(memberships),
             "memberships": memberships,
             "modal_scores": modal_scores,
+            "modal_scores_raw": modal_scores_raw,
             "weights": {"negative": w_s, "arousal": w_a},
         }
+
+
+def load_modality_calibration(config: dict[str, Any]) -> dict[str, tuple[float, float]]:
+    """读取中性校准偏移 ``{模态: (negative_offset, arousal_offset)}``。
+
+    settings.json 的 ``fusion_calibration``：``{"enabled": bool, "path": str}``；
+    缺省 enabled=True、path=config/modality_calibration.json。文件缺失 / 损坏 /
+    禁用时返回空 dict（不做偏移）。偏移被钳制到 ±0.3，防止校准文件异常时反转判断。
+    """
+    fc = config.get("fusion_calibration", {}) or {}
+    if not fc.get("enabled", True):
+        return {}
+    from src import portable
+    path = Path(fc.get("path") or (portable.CONFIG_DIR / "modality_calibration.json"))
+    if not path.is_absolute():
+        path = portable.PROJECT_ROOT / path
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, tuple[float, float]] = {}
+    for m in MODALITIES:
+        v = (data.get("offsets") or {}).get(m)
+        if not v:
+            continue
+        ds = max(-0.3, min(0.3, float(v.get("negative", 0.0))))
+        da = max(-0.3, min(0.3, float(v.get("arousal", 0.0))))
+        out[m] = (ds, da)
+    return out

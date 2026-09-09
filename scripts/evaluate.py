@@ -19,6 +19,12 @@
 上因证书损坏抛 SSLError），只用 ``huggingface_hub`` + ``pyarrow`` + ``soundfile``。
 每条语音的原始模态分数缓存为 JSON，消融与动态权重开关在缓存上离线重算，无需
 重跑模型。
+
+v0.2 起：
+- ``neutral`` 额外把各模态在中性语音上的**原始**均值写成
+  ``config/modality_calibration.json``（offset = 0.5 − 均值），供融合层做基线归一化；
+- ``emotion`` 按说话人划分 **dev / test**（说话人 id 排序后前半 dev、后半 test），
+  融合权重的网格搜索只在 dev 上进行，test 只报告一次，避免在同一批数据上调参与报告。
 """
 
 from __future__ import annotations
@@ -60,6 +66,8 @@ AISHELL_REPO = "shenyunhang/AISHELL-3"
 CSEM_REPO = "AIDC-AI/CSEMOTIONS"
 
 SEED = 20260910
+CALIB_PATH = portable.CONFIG_DIR / "modality_calibration.json"
+OFFSET_CLIP = 0.3
 _PUNCT_RE = re.compile(r"[，。！？、；：,.!?;:\"'“”‘’（）()《》<>【】\[\]…—\-\s]+")
 
 # CSEMOTIONS 7 类 → 参照象限。neutral / surprise 单独报告，不计入严格象限准确率
@@ -283,7 +291,9 @@ class _Runner:
         return {
             "negative": r["negative"], "valence": r["valence"], "arousal": r["arousal"],
             "dominant_quadrant": r["dominant_quadrant"], "memberships": r["memberships"],
-            "modal_scores": r["modal_scores"], "weights": r["weights"],
+            "modal_scores": r["modal_scores"],
+            "modal_scores_raw": r.get("modal_scores_raw", r["modal_scores"]),
+            "weights": r["weights"],
             "asr_text": r["asr_text"], "asr_confidence": r["asr_confidence"],
             "snr_db": r["audio_quality"]["snr_db"], "duration": r["duration"],
             "paralang_events": r["paralang_events"],
@@ -293,13 +303,20 @@ class _Runner:
 
 
 def _refuse(config: dict, rec: dict, *, drop: set[str] = frozenset(),
-            only: str | None = None, dynamic: bool = True) -> dict[str, Any]:
-    """在缓存的模态分数上离线重算融合（消融 / 动态权重开关）。"""
+            only: str | None = None, dynamic: bool = True,
+            weights: dict[str, dict[str, float]] | None = None) -> dict[str, Any]:
+    """在缓存的**原始**模态分数上离线重算融合（消融 / 动态权重开关 / 权重覆盖）。
+
+    中性校准偏移由 WeightedFusion 按 config 自行施加，因此这里必须喂原始分。
+    """
     from src.fusion.weighted_fusion import MODALITIES, WeightedFusion
+    if weights is not None:
+        config = {**config, "fusion_weights": weights}
     fus = WeightedFusion(config)
+    raw = rec.get("modal_scores_raw", rec["modal_scores"])
     scores = {}
     for m in MODALITIES:
-        s = rec["modal_scores"][m]
+        s = raw[m]
         if m in drop or (only is not None and m != only):
             scores[m] = (0.5, 0.5)
         else:
@@ -431,7 +448,26 @@ def cmd_neutral(args: argparse.Namespace) -> int:
                         for m in rows[0]["modal_scores"]} if rows else {},
         "degraded_counts": dict(Counter(m for r in rows for m in r["degraded_modalities"])),
     }
+    # 各模态原始均值 → 中性校准偏移（v0.2）
+    raw_means = {m: {ax: _mean_std(r.get("modal_scores_raw", r["modal_scores"])[m][ax] for r in rows)[0]
+                     for ax in ("negative", "arousal")}
+                 for m in rows[0]["modal_scores"]} if rows else {}
+    summary["modal_means_raw"] = raw_means
+    offsets = {m: {ax: round(max(-OFFSET_CLIP, min(OFFSET_CLIP, 0.5 - v[ax])), 4)
+                   for ax in ("negative", "arousal")} for m, v in raw_means.items()}
     _json_dump(summary, RESULTS_DIR / "neutral_summary.json")
+    if not args.no_write_calibration:
+        _json_dump({
+            "_meta": {
+                "source": "AISHELL-3 test subset (emotion-neutral read speech), raw modality means",
+                "definition": "offset = 0.5 - mean_raw, clipped to ±%.1f; applied additively in WeightedFusion" % OFFSET_CLIP,
+                "n": len(rows), "generated": date.today().isoformat(),
+                "script": "scripts/evaluate.py neutral",
+            },
+            "modal_means_raw": raw_means,
+            "offsets": offsets,
+        }, CALIB_PATH)
+        _log(f"中性校准偏移已写入 {CALIB_PATH}: {offsets}")
     _log(f"CER={cer:.3f}  negative μ={summary['negative'][0]:.3f}  "
          f"arousal μ={summary['arousal'][0]:.3f}  象限分布={summary['quadrant_hist']}")
     return 0
@@ -516,6 +552,45 @@ def cmd_emotion(args: argparse.Namespace) -> int:
     return _emotion_summarize(runner.config, rows)
 
 
+def _split_dev_test(rows: list[dict[str, Any]]) -> tuple[list[dict], list[dict], list[str], list[str]]:
+    spk = sorted({r["speaker"] for r in rows})
+    dev_spk, test_spk = spk[: len(spk) // 2], spk[len(spk) // 2:]
+    return ([r for r in rows if r["speaker"] in dev_spk],
+            [r for r in rows if r["speaker"] in test_spk], dev_spk, test_spk)
+
+
+def _apply(config: dict, rows: list[dict[str, Any]], **kw) -> list[dict[str, Any]]:
+    out = []
+    for r in rows:
+        f = _refuse(config, r, **kw)
+        out.append({**r, "valence": f["valence"], "arousal": f["arousal"],
+                    "negative": f["negative"], "dominant_quadrant": f["dominant_quadrant"]})
+    return out
+
+
+def _score_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    q = _quadrant_metrics(rows)
+    d = _direction_metrics(rows)
+    return {"quadrant": q, "direction": d,
+            "composite": float(np.nanmean([q["accuracy"], d["spearman_arousal"], d["spearman_valence"]]))}
+
+
+def _weight_grid(base: dict[str, dict[str, float]]) -> list[tuple[str, dict[str, dict[str, float]]]]:
+    """小而透明的网格：text_llm 的 negative 权重 ∈ {0.30, 0.20, 0.10, 0.05}，
+    释放的权重按其余模态原比例分配；arousal 权重不动。"""
+    grid = []
+    for w in (0.30, 0.20, 0.10, 0.05):
+        neg = dict(base["negative"])
+        freed = neg["text_llm"] - w
+        neg["text_llm"] = w
+        others = {m: v for m, v in neg.items() if m != "text_llm"}
+        tot = sum(others.values())
+        for m in others:
+            neg[m] = round(others[m] + freed * others[m] / tot, 4)
+        grid.append((f"text_llm.neg={w:.2f}", {"negative": neg, "arousal": dict(base["arousal"])}))
+    return grid
+
+
 def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
     import jiwer
 
@@ -523,7 +598,33 @@ def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
     summary: dict[str, Any] = {"n": len(rows),
                                "emotions": dict(Counter(r["emotion"] for r in rows)),
                                "speakers": len({r["speaker"] for r in rows})}
-    # 全模态 + 动态权重（= 管线默认）
+    dev, test, dev_spk, test_spk = _split_dev_test(rows)
+    summary["split"] = {"dev_speakers": dev_spk, "test_speakers": test_spk,
+                        "n_dev": len(dev), "n_test": len(test)}
+    # 校准开/关（全体，用于展示校准本身的作用）
+    cfg_nocal = {**config, "fusion_calibration": {"enabled": False}}
+    summary["calibration_off"] = _score_block(_apply(cfg_nocal, rows))
+    summary["calibration_on"] = _score_block(_apply(config, rows))
+    # 权重网格：只看 dev
+    grid_rows = []
+    for name, w in _weight_grid(config["fusion_weights"]):
+        b_dev = _score_block(_apply(config, dev, weights=w))
+        b_test = _score_block(_apply(config, test, weights=w))
+        grid_rows.append({"name": name, "weights": w,
+                          "dev": {"accuracy": b_dev["quadrant"]["accuracy"], "rhoA": b_dev["direction"]["spearman_arousal"],
+                                  "rhoV": b_dev["direction"]["spearman_valence"], "composite": b_dev["composite"]},
+                          "test": {"accuracy": b_test["quadrant"]["accuracy"], "rhoA": b_test["direction"]["spearman_arousal"],
+                                   "rhoV": b_test["direction"]["spearman_valence"], "composite": b_test["composite"]}})
+    best = max(grid_rows, key=lambda g: g["dev"]["composite"])
+    summary["weight_grid"] = grid_rows
+    summary["chosen_weights"] = {"name": best["name"], "weights": best["weights"]}
+    # 用 dev 选出的权重在 test 上报告（正式数字）
+    test_rows = _apply(config, test, weights=best["weights"])
+    summary["test"] = _score_block(test_rows)
+    summary["dev"] = _score_block(_apply(config, dev, weights=best["weights"]))
+    # 全体（用选定权重）：与 v0.1 报告口径一致的整体表
+    rows = _apply(config, rows, weights=best["weights"])
+    config = {**config, "fusion_weights": best["weights"]}
     summary["full"] = {"quadrant": _quadrant_metrics(rows), "direction": _direction_metrics(rows)}
     # 动态权重关闭
     static_rows = []
@@ -558,8 +659,13 @@ def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
     _json_dump(summary, RESULTS_DIR / "emotion_summary.json")
     q = summary["full"]["quadrant"]
     d = summary["full"]["direction"]
-    _log(f"象限准确率={q['accuracy']:.3f} (n={q['n']})  Spearman A={d['spearman_arousal']:.3f} "
-         f"V={d['spearman_valence']:.3f}  方向检验 {d['pairwise_pass']}/{d['pairwise_total']}")
+    t = summary["test"]
+    _log(f"[全体，权重={summary['chosen_weights']['name']}] 象限准确率={q['accuracy']:.3f} (n={q['n']})  "
+         f"ρA={d['spearman_arousal']:.3f} ρV={d['spearman_valence']:.3f}  方向 {d['pairwise_pass']}/{d['pairwise_total']}")
+    _log(f"[test 说话人 {summary['split']['test_speakers']}] 象限准确率={t['quadrant']['accuracy']:.3f} "
+         f"ρA={t['direction']['spearman_arousal']:.3f} ρV={t['direction']['spearman_valence']:.3f}")
+    _log(f"[校准 off→on，全体] 准确率 {summary['calibration_off']['quadrant']['accuracy']:.3f} → "
+         f"{summary['calibration_on']['quadrant']['accuracy']:.3f}")
     return 0
 
 
@@ -643,6 +749,26 @@ def cmd_report(args: argparse.Namespace) -> int:
         for e, c in q["confusion"].items():
             out.append(f"| {e}（{EMOTION_TO_QUADRANT[e]}） | " + " | ".join(str(c.get(x, 0)) for x in ("Q1", "Q2", "Q3", "Q4")) + " |")
         out.append("")
+        if "split" in s:
+            sp = s["split"]
+            out.append("**中性校准（全体样本）**\n")
+            out.append("| 设置 | 象限准确率 | ρ arousal | ρ valence |\n|------|---:|---:|---:|")
+            for lab, key in (("校准关", "calibration_off"), ("校准开", "calibration_on")):
+                b = s[key]
+                out.append(f"| {lab} | {_fmt(b['quadrant']['accuracy'])} | {_fmt(b['direction']['spearman_arousal'])} | {_fmt(b['direction']['spearman_valence'])} |")
+            out.append("")
+            out.append(f"**融合权重网格（仅在 dev 说话人 {sp['dev_speakers']} 上选择，n={sp['n_dev']}；"
+                       f"test 说话人 {sp['test_speakers']}，n={sp['n_test']}）**\n")
+            out.append("| 候选 | dev 准确率 | dev ρA | dev ρV | dev 综合 | test 准确率 | test ρA | test ρV |\n|------|---:|---:|---:|---:|---:|---:|---:|")
+            for g in s["weight_grid"]:
+                mark = " **←选定**" if g["name"] == s["chosen_weights"]["name"] else ""
+                out.append(f"| {g['name']}{mark} | {_fmt(g['dev']['accuracy'])} | {_fmt(g['dev']['rhoA'])} | {_fmt(g['dev']['rhoV'])} | {_fmt(g['dev']['composite'])} | "
+                           f"{_fmt(g['test']['accuracy'])} | {_fmt(g['test']['rhoA'])} | {_fmt(g['test']['rhoV'])} |")
+            out.append("")
+            t = s["test"]
+            out.append(f"**正式数字（test 说话人，选定权重）**：象限准确率 **{_fmt(t['quadrant']['accuracy'])}**（n={t['quadrant']['n']}），"
+                       f"ρA {_fmt(t['direction']['spearman_arousal'])}，ρV {_fmt(t['direction']['spearman_valence'])}，"
+                       f"方向检验 {t['direction']['pairwise_pass']}/{t['direction']['pairwise_total']}\n")
         sq = s["static_weights"]["quadrant"]
         sd = s["static_weights"]["direction"]
         out.append("**动态权重开/关**\n")
@@ -675,8 +801,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("calibrate", help="AISHELL-3 韵律基准实测 → config/prosody_norms.json")
     p.add_argument("--per-gender", type=int, default=300)
-    p = sub.add_parser("neutral", help="AISHELL-3 全管线：CER + 中性语音输出分布")
+    p = sub.add_parser("neutral", help="AISHELL-3 全管线：CER + 中性语音输出分布 + 写中性校准偏移")
     p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--no-write-calibration", action="store_true",
+                   help="不写 config/modality_calibration.json（仅报告）")
     p = sub.add_parser("emotion", help="CSEMOTIONS 情绪判别验证")
     p.add_argument("--per-cell", type=int, default=6, help="每（情绪×说话人）抽样句数")
     p = sub.add_parser("resummarize", help="仅在缓存上重算 emotion 汇总（不跑模型）")

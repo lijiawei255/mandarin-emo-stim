@@ -20,8 +20,10 @@
 【子权重聚合】按各特征对负面/唤醒的实证贡献加权（见 score()）：
     s_prosody = 0.25·HNR_inv + 0.20·Jitter + 0.20·Shimmer
               + 0.15·F0_drop(= 斜率越负越高) + 0.10·Pause + 0.10·SpeechRate_low
-    a_prosody = 0.30·SpeechRate + 0.25·F0_range + 0.20·StdF0
-              + 0.15·MeanF0 + 0.10·Pause_inv
+    a_prosody = 0.25·SpeechRate + 0.20·F0_range + 0.15·StdF0 + 0.15·MeanF0
+              + 0.05·Pause_inv + 0.10·Jitter + 0.10·Shimmer
+    （v0.2 加入 Jitter/Shimmer：Banse & Scherer 1996 报告恐惧/紧张语音的基频与
+      振幅微扰升高；v0.1 的唤醒分抓不住「低声屏息」型的恐惧表达）
 （HNR_inv、SpeechRate_low 等为「反向」特征，详见 normalizer 注释。）
 
 所有原始指标先经 z-score 归一化到 [0,1]（参考 μ/σ 见
@@ -211,8 +213,9 @@ def score(feat: ProsodyFeatures) -> tuple[float, float, dict[str, Any]]:
     n_pause_ratio_inv = 1 - zscore_normalize(feat.pause_ratio, *s["pause_ratio"])
 
     a_prosody = (
-        0.30 * n_speech_rate + 0.25 * n_f0_range + 0.20 * n_std_f0
-        + 0.15 * n_mean_f0 + 0.10 * n_pause_ratio_inv
+        0.25 * n_speech_rate + 0.20 * n_f0_range + 0.15 * n_std_f0
+        + 0.15 * n_mean_f0 + 0.05 * n_pause_ratio_inv
+        + 0.10 * n_jitter + 0.10 * n_shimmer
     )
 
     detail = {

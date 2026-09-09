@@ -199,6 +199,7 @@ class AnalysisPipeline:
             "dominant_quadrant": fr["dominant_quadrant"],
             "memberships": fr["memberships"],
             "modal_scores": fr["modal_scores"],
+            "modal_scores_raw": fr.get("modal_scores_raw", fr["modal_scores"]),
             "weights": fr["weights"],
             "asr_text": ctx.get("asr_text", ""),
             "asr_confidence": ctx.get("asr_confidence", 0.0),
