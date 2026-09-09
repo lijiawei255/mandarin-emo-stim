@@ -236,3 +236,4 @@ tests/fixtures/personal_*
 # pytest 缓存
 .pytest_cache/
 
+scripts/lit_search.py
