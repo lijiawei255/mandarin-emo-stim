@@ -156,6 +156,7 @@ class WeightedFusion:
         audio_quality: dict[str, Any] | None = None,
         asr_confidence: float = 0.8,
         paralang_events: list[dict[str, Any]] | None = None,
+        skip_calibration: set[str] | frozenset[str] = frozenset(),
     ) -> dict[str, Any]:
         """执行加权融合。
 
@@ -164,6 +165,8 @@ class WeightedFusion:
             audio_quality: 含 ``snr_db`` 的字典（缺失时按 15dB 中等质量处理）。
             asr_confidence: ASR 置信度 [0,1]，默认 0.8（高）。
             paralang_events: 检测到的副语言事件列表，每项含 ``confidence``。
+            skip_calibration: 不施加中性校准偏移的模态（如已降级为中性分的模态，
+                其 0.5 是「无信息」而非测量值，不应再被平移）。
 
         Returns:
             ``{negative, valence, arousal, dominant_quadrant, memberships,
@@ -182,7 +185,7 @@ class WeightedFusion:
             s0, a0 = modality_scores.get(m, (0.5, 0.5))
             s0 = max(0.0, min(1.0, float(s0)))
             a0 = max(0.0, min(1.0, float(a0)))
-            ds, da = self.offsets.get(m, (0.0, 0.0))
+            ds, da = (0.0, 0.0) if m in skip_calibration else self.offsets.get(m, (0.0, 0.0))
             s = max(0.0, min(1.0, s0 + ds))
             a = max(0.0, min(1.0, a0 + da))
             negative += w_s[m] * s

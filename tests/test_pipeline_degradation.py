@@ -80,6 +80,7 @@ def test_emotion_failure_degrades_not_crashes(make_pipeline):
     """emotion2vec 失败：结果仍返回，acoustic 标记降级且为中性分。"""
     result = make_pipeline(emotion=_Failing()).analyze(str(FIXTURE))
     assert result["degraded_modalities"] == ["acoustic"]
+    # 降级模态不施加中性校准偏移，保持精确中性
     assert result["modal_scores"]["acoustic"] == {"negative": 0.5, "arousal": 0.5}
     assert 0.0 <= result["negative"] <= 1.0
     assert abs(sum(result["memberships"].values()) - 1.0) < 1e-6
@@ -92,8 +93,8 @@ def test_asr_failure_degrades_text_modalities(make_pipeline):
     assert "text_stat" in result["degraded_modalities"]
     assert result["asr_text"] == ""
     assert result["asr_confidence"] == 0.0
-    # 声学模态仍来自桩模型
-    assert result["modal_scores"]["acoustic"]["negative"] == pytest.approx(0.3)
+    # 声学模态仍来自桩模型（比较校准前的原始分）
+    assert result["modal_scores_raw"]["acoustic"]["negative"] == pytest.approx(0.3)
 
 
 def test_multiple_failures_listed_in_order(make_pipeline):

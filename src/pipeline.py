@@ -187,6 +187,7 @@ class AnalysisPipeline:
             audio_quality=audio_quality,
             asr_confidence=ctx.get("asr_confidence", 0.8),
             paralang_events=ctx.get("paralang_events", []),
+            skip_calibration=set(ctx.get("degraded", [])),
         )
 
     # ------------------------------------------------------------------ #
