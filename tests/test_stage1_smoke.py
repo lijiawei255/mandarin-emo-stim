@@ -1,3 +1,4 @@
+import pytest
 """阶段 1 冒烟测试：环境、配置与便携模式可用性。"""
 
 import json
@@ -57,6 +58,7 @@ def test_core_python_deps_importable():
     assert np.__version__.startswith("1.26")
 
 
+@pytest.mark.gpu
 def test_torch_cuda_available():
     """torch 已安装且 CUDA 可用（本版本目标：Windows + NVIDIA GPU）。"""
     import torch

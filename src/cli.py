@@ -37,6 +37,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", default=None, help="把完整结果写入该 JSON 文件")
     args = parser.parse_args(argv)
 
+    # 先做廉价的输入校验，再加载耗时的模型（也避免测试环境无模型时触发下载）
+    audio_path = Path(args.audio)
+    if not audio_path.exists():
+        print(f"\n[错误] 文件不存在：{audio_path}", flush=True)
+        return 1
+    if audio_path.suffix.lower() not in (".wav", ".mp3", ".flac", ".ogg", ".m4a"):
+        print(f"\n[错误] 不支持的音频格式：{audio_path.suffix}", flush=True)
+        return 1
+
     manager = None
     try:
         print("=== 加载模型 ===", flush=True)
