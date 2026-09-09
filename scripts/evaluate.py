@@ -328,10 +328,8 @@ FEATURES = ("mean_f0", "std_f0", "f0_range", "speech_rate", "pause_ratio",
 
 
 def cmd_calibrate(args: argparse.Namespace) -> int:
-    from src.audio import loader
+    from src.audio import loader, vad
     from src.features import prosody
-
-    from src.audio import vad
     from src.models.asr_model import ASRModel
 
     sample = aishell_sample(args.per_gender)
