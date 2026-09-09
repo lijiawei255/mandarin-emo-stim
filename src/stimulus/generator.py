@@ -25,7 +25,10 @@ class StimulusGenerator:
             sr: 刺激采样率。为 ``None`` 时取配置中的 ``audio.stimulus_sample_rate``。
         """
         self.config = config if config is not None else load_settings()
-        self.stimulus_config = load_stimulus_params()
+        # 把 settings.stimulus（max_peak_dbfs / fade_ms / haas_delay_ms 等）
+        # 并入合成配置，使限幅与淡入淡出参数以 settings.json 为准。
+        self.stimulus_config = dict(load_stimulus_params())
+        self.stimulus_config.update(self.config.get("stimulus", {}))
         if sr is None:
             sr = int(self.config["audio"]["stimulus_sample_rate"])
         self.sr = sr

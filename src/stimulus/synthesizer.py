@@ -12,9 +12,12 @@
   4. ADSR 包络：起音时间控制「冲击感」vs「柔和感」（陡起音=冲击，缓起音=柔和）。
   5. 粉噪混合：粉噪（1/f 频谱）比白噪更柔和，有遮蔽环境干扰、辅助放松/专注的
      作用（参考 Soderlund 2007 关于粉噪对认知的影响），仅用于降唤醒场景。
-  6. 安全限幅 -10dBFS：峰值不超过 -10dBFS（≈70-75dB SPL），确保无听力损伤风险。
-  7. 淡入淡出：消除起止处的 click 噪声。
-  8. Haas 立体声：右声道延迟 12ms（< 回声感知阈值 30ms），产生自然立体声宽度
+  6. 响度：按目标 RMS 电平（loud_db，dBFS）归一——RMS 才是与感知响度对应的量。
+  7. 数字峰值限幅：峰值不超过 settings.stimulus.max_peak_dbfs（默认 -10 dBFS）。
+     注意 dBFS 是数字满刻度相对值，**实际声压级取决于播放设备与系统音量**，
+     本模块无法保证任何 SPL 数值；用户须自行从低音量起听。
+  8. 淡入淡出：消除起止处的 click 噪声。
+  9. Haas 立体声：右声道延迟 12ms（< 回声感知阈值 30ms），产生自然立体声宽度
      感而非可闻回声，增强沉浸感。不使用双耳节拍（证据不足，见 research_notes）。
 """
 
@@ -127,15 +130,15 @@ def synthesize(params: StimulusParams, duration: float, sr: int,
             pink = pink / peak * params.noise_ratio
         tone = tone + pink
 
-    # 6. 全局响度归一化到目标 RMS 电平
+    # 6. 响度归一化到目标 RMS 电平（dBFS）
     loud_amp = 10 ** (params.loud_db / 20.0)
-    peak = np.max(np.abs(tone))
-    if peak > 0:
-        tone = tone / peak * loud_amp
+    rms = float(np.sqrt(np.mean(tone ** 2)))
+    if rms > 0:
+        tone = tone / rms * loud_amp
 
-    # 7. 安全限幅（确保不超过 -10dBFS 峰值）
-    max_peak_amp = 10 ** (-10 / 20.0)
-    peak = np.max(np.abs(tone))
+    # 7. 数字峰值限幅（settings.stimulus.max_peak_dbfs，默认 -10 dBFS）
+    max_peak_amp = 10 ** (float(config.get("max_peak_dbfs", -10.0)) / 20.0)
+    peak = float(np.max(np.abs(tone)))
     if peak > max_peak_amp:
         tone = tone * (max_peak_amp / peak)
 
@@ -152,8 +155,5 @@ def synthesize(params: StimulusParams, duration: float, sr: int,
     right = np.roll(tone, haas_delay)
     right[:haas_delay] = 0.0
     stereo = np.column_stack([tone, right])
-
-    # 防止叠加削波
-    stereo = stereo * 0.7
-
+    # 左右声道各自是同一信号的时移副本，不叠加，峰值限幅在第 7 步已保证。
     return stereo.astype(np.float32)

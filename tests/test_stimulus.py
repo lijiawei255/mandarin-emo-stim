@@ -122,3 +122,55 @@ def test_wav_roundtrip(generator, tmp_path):
     assert data.shape == wave.shape
     # PCM_16 量化误差 < 1/32767
     assert np.max(np.abs(data - wave)) < 1e-3
+
+
+# ---------------- 响度 / 限幅 语义一致性 ----------------
+def _peak_db(w):
+    return 20 * np.log10(np.max(np.abs(w)) + 1e-12)
+
+
+def _rms_db(w):
+    return 20 * np.log10(np.sqrt(np.mean(w[:, 0] ** 2)) + 1e-12)
+
+
+def test_peak_limiter_actually_engages(generator, stim_config):
+    """loud_db 取上限 -10 时，峰值恰好被限幅到 max_peak_dbfs（-10 dBFS）。
+
+    此前实现按峰值归一后再统一 ×0.7，限幅永不触发，实际峰值恒为 -13 dBFS，
+    与文档「-10 dBFS 限幅」不符。
+    """
+    from src.stimulus.strategies import compute_params
+    from src.stimulus.synthesizer import synthesize
+    m = compute_quadrant_memberships(0.9, 1.0)
+    p = compute_params(0.9, 1.0, m, stim_config)
+    assert p.loud_db == pytest.approx(-10.0)
+    w = synthesize(p, 2.0, generator.sr, generator.stimulus_config)
+    max_peak = generator.stimulus_config["max_peak_dbfs"]
+    assert _peak_db(w) == pytest.approx(max_peak, abs=0.05)
+
+
+def test_peak_never_exceeds_config_ceiling(generator):
+    max_peak = generator.stimulus_config["max_peak_dbfs"]
+    for v in (0.0, 0.5, 1.0):
+        for a in (0.0, 0.5, 1.0):
+            w = generator.generate(v, a, duration=1.0)
+            assert _peak_db(w) <= max_peak + 0.05
+
+
+def test_loudness_is_rms_based_and_monotonic(generator, stim_config):
+    """loud_db 越高 RMS 越高（响度按 RMS 归一，非峰值）。"""
+    from src.stimulus.strategies import compute_params
+    from src.stimulus.synthesizer import synthesize
+    m = {"Q4": 1.0, "Q1": 0.0, "Q2": 0.0, "Q3": 0.0}
+    rms_levels = []
+    for a in (0.0, 0.3, 0.6):
+        p = compute_params(0.8, a, m, stim_config)
+        w = synthesize(p, 2.0, generator.sr, generator.stimulus_config)
+        rms_levels.append(_rms_db(w))
+    assert rms_levels[0] < rms_levels[1] < rms_levels[2]
+
+
+def test_generator_merges_settings_stimulus_into_config(generator):
+    """generator 把 settings.stimulus（max_peak_dbfs/fade/haas）并入合成配置。"""
+    for k in ("max_peak_dbfs", "fade_ms", "haas_delay_ms"):
+        assert k in generator.stimulus_config

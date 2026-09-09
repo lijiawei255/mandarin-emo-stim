@@ -101,8 +101,8 @@ def compute_params(
     # ---- 基频 f0（按主象限做 valence 连续微调）----
     if dom == "Q2":      # valence 越低 -> f0 越低（深沉感）
         f0 = 200 + 200 * v
-    elif dom == "Q3":    # valence 越低 -> f0 越高（注入能量/明亮感）
-        f0 = 300 + 300 * v
+    elif dom == "Q3":    # valence 越低 -> f0 越高（注入能量/明亮感，激活干预）
+        f0 = 300 + 300 * (1 - v)   # v=0 → 600 Hz，v=0.5 → 450 Hz（=Q3 锚点）
     elif dom == "Q1":
         f0 = 400 + 400 * v
     else:                # Q4
