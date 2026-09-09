@@ -2,7 +2,8 @@
 
 通过 few-shot prompt 让模型输出两个 0~1 的浮点数（负面分、唤醒度），用正则解析。
 启用 ``enable_thinking=False`` 跳过 Qwen3 的思考模式（避免 <think> 块干扰）。
-解析失败时 temperature=0 重试一次，二次失败降级为文本统计分数。
+**首次调用使用 greedy 解码（do_sample=False）以保证同一输入结果可复现**；
+仅当解析失败时才以低温采样重试一次，二次失败降级为文本统计分数。
 
 注：1.7B 小模型对精确数值评分能力有限，故采用 few-shot 示例约束输出格式与量纲，
 实际情感量化以 6 模态加权融合为主，LLM 仅作为文本语义支路之一。
@@ -90,16 +91,16 @@ class LLMModel:
         if not asr_text or not asr_text.strip():
             return {"s_text_llm": 0.5, "a_text_llm": 0.5, "raw": "", "fallback": True}
 
-        # 第一次：temperature=0.1
-        raw = self._generate(asr_text, temperature=0.1)
+        # 第一次：greedy（确定性，可复现）
+        raw = self._generate(asr_text, temperature=0.0)
         parsed = self._parse(raw)
         if parsed is not None:
             s, a = parsed
             return {"s_text_llm": s, "a_text_llm": a, "raw": raw, "fallback": False}
 
-        # 重试：temperature=0（贪婪）
-        logger.warning("LLM 输出解析失败，重试（temperature=0）：%s", raw)
-        raw = self._generate(asr_text, temperature=0.0)
+        # 重试：低温采样，跳出 greedy 的固定坏输出
+        logger.warning("LLM 输出解析失败，低温采样重试：%s", raw)
+        raw = self._generate(asr_text, temperature=0.3)
         parsed = self._parse(raw)
         if parsed is not None:
             s, a = parsed

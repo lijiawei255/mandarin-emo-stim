@@ -178,3 +178,86 @@ def test_historydb_concurrent_writes_safe(tmp_path):
     for t in threads:
         t.join()
     assert db.get_count() == 10
+
+
+# ==================== SIGINT 定时器真正唤醒 Python ====================
+def test_sigint_timer_has_python_slot(monkeypatch):
+    """SIGINT 保活定时器必须连接 Python 槽，否则 Qt 在 C++ 层处理超时，
+    Python 信号处理器永远不会被调度，Ctrl+C 修复无效。"""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+    from app import Application
+
+    qapp = QCoreApplication.instance() or QCoreApplication([])
+    timer = Application._make_sigint_timer(qapp, interval_ms=10)
+    assert isinstance(timer, QTimer)
+    assert timer.isActive()
+
+    # 让事件循环跑 60ms；若连接了 Python 槽，_ticks 会递增
+    loop = QEventLoop()
+    QTimer.singleShot(60, loop.quit)
+    loop.exec()
+    assert timer.property("_ticks") >= 1
+    timer.stop()
+
+
+# ==================== PANNs 标签落到 portable_data ====================
+def test_panns_labels_prefer_portable_dir(tmp_path, monkeypatch):
+    from src import portable
+    from src.models.pann_model import PANNModel
+    monkeypatch.setattr(portable, "PANNS_DIR", tmp_path)
+    (tmp_path / "class_labels_indices.csv").write_text(
+        "index,mid,display_name\n0,/m/x,Speech\n1,/m/y,Laughter\n", encoding="utf-8")
+    labels = PANNModel._load_labels()
+    assert labels == ["Speech", "Laughter"]
+
+
+def test_panns_detect_marks_degraded_when_labels_missing(tmp_path, monkeypatch):
+    """标签缺失时不再静默返回中性分，而是显式标记 degraded。"""
+    from src import portable
+    from src.models.pann_model import PANNModel
+    monkeypatch.setattr(portable, "PANNS_DIR", tmp_path)
+    monkeypatch.setattr(PANNModel, "_load_labels", staticmethod(lambda: []))
+    pann = PANNModel(device="cpu", model=object())
+    out = pann.detect(np.zeros(32000, dtype=np.float32), 32000)
+    assert out["degraded"] is True
+    assert out["s_paralang"] == 0.5
+
+
+# ==================== LLM 首次 greedy ====================
+def test_llm_first_call_is_greedy():
+    """首次调用 do_sample=False（可复现），解析失败后重试才采样。"""
+    import torch
+    from src.models.llm_model import LLMModel
+
+    calls = []
+
+    class _Tok:
+        eos_token_id = 0
+
+        def apply_chat_template(self, messages, **kw):
+            return "prompt"
+
+        def __call__(self, text, return_tensors=None):
+            class _Inp(dict):
+                def to(self, device):
+                    return self
+            return _Inp(input_ids=torch.zeros((1, 3), dtype=torch.long))
+
+        def decode(self, ids, skip_special_tokens=True):
+            # 首次返回垃圾触发重试，第二次返回合法
+            return "garbage" if len(calls) == 1 else "0.2 0.7"
+
+    class _Model:
+        device = "cpu"
+
+        def generate(self, **kw):
+            calls.append(kw)
+            return torch.zeros((1, 5), dtype=torch.long)
+
+    llm = LLMModel(device="cpu", model=_Model(), tokenizer=_Tok())
+    out = llm.analyze_text("测试")
+    assert calls[0]["do_sample"] is False
+    assert calls[1]["do_sample"] is True
+    assert out["fallback"] is False and out["s_text_llm"] == pytest.approx(0.2)

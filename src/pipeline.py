@@ -138,6 +138,8 @@ class AnalysisPipeline:
         ctx["paralang_events"] = result["events"]
         ctx["s_paralang"] = result["s_paralang"]
         ctx["a_paralang"] = result["a_paralang"]
+        if result.get("degraded") and "paralang" not in ctx["degraded"]:
+            ctx["degraded"].append("paralang")
 
     def _step_prosody(self, ctx: dict) -> None:
         feat = prosody_feat.extract(ctx["y"], ctx["sr"])

@@ -30,6 +30,12 @@ PANNS_CHECKPOINT_URL = (
 PANNS_CHECKPOINT_MIN_BYTES = 20 * 1024 * 1024
 PANNS_CHECKPOINT_MAX_BYTES = 30 * 1024 * 1024
 
+# AudioSet 527 类标签表（PANNs 官方仓库 metadata）
+PANNS_LABELS_URL = (
+    "https://raw.githubusercontent.com/qiuqiangkong/audioset_tagging_cnn/"
+    "master/metadata/class_labels_indices.csv"
+)
+
 ProgressCallback = Callable[[str, int], None]
 
 
@@ -71,6 +77,18 @@ def download_panns_checkpoint(progress_cb: ProgressCallback | None = None) -> Pa
             f"PANNs checkpoint 下载后大小校验失败（{dest.stat().st_size} 字节），"
             f"文件可能损坏。请检查网络后重试。"
         )
+    return dest
+
+
+def download_panns_labels(progress_cb: ProgressCallback | None = None) -> Path:
+    """下载 AudioSet 标签表到 ``portable_data/models/panns/``（已存在则跳过）。"""
+    portable.PANNS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = portable.PANNS_DIR / "class_labels_indices.csv"
+    if dest.exists() and dest.stat().st_size > 10_000:
+        return dest
+    if dest.exists():
+        dest.unlink()
+    _download_with_retry(PANNS_LABELS_URL, dest, progress_cb, "PANNs 标签表")
     return dest
 
 
@@ -127,4 +145,5 @@ def ensure_all_models(progress_cb: ProgressCallback | None = None) -> dict[str, 
         ``{"panns": <path>}`` 等本地路径映射。
     """
     panns_path = download_panns_checkpoint(progress_cb)
-    return {"panns": panns_path}
+    labels_path = download_panns_labels(progress_cb)
+    return {"panns": panns_path, "panns_labels": labels_path}

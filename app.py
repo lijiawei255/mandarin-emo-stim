@@ -78,10 +78,28 @@ class Application:
         # 关键：Qt 事件循环默认不让 Python 检查 SIGINT，导致 Ctrl+C 在模型加载等
         # 长耗时操作期间无响应（看似卡死）。用一个周期定时器强制 Python 运行信号
         # 处理，使 Ctrl+C 能及时中断 exec()。
-        self._sigint_timer = QTimer(self._qt_app)
-        self._sigint_timer.start(200)  # 200ms 唤醒一次
+        self._sigint_timer = self._make_sigint_timer(self._qt_app)
 
         return self._qt_app.exec()
+
+    @staticmethod
+    def _make_sigint_timer(qt_app, interval_ms: int = 200):
+        """创建让 Python 周期性获得控制权的保活定时器。
+
+        必须连接一个 **Python** 槽：若只 ``start()`` 而不连接任何 Python
+        可调用对象，Qt 会在 C++ 层消费超时事件，解释器不会被调度，
+        ``signal.signal`` 注册的处理器也就永远不会运行，Ctrl+C 依然无响应。
+        """
+        from PySide6.QtCore import QTimer
+        timer = QTimer(qt_app)
+        timer.setProperty("_ticks", 0)
+
+        def _tick() -> None:
+            timer.setProperty("_ticks", int(timer.property("_ticks") or 0) + 1)
+
+        timer.timeout.connect(_tick)
+        timer.start(interval_ms)
+        return timer
 
     @staticmethod
     def _install_crash_handlers(qt_app: "QApplication") -> None:

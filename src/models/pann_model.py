@@ -3,7 +3,10 @@
 检测笑声/哭泣/尖叫/叹息/清嗓子/咳嗽等副语言事件，并按 n_contrib/a_contrib
 聚合为 (s_paralang, a_paralang) 与检测到的事件列表。
 
-checkpoint 来自 Zenodo（Cnn10_mAP=0.380.pth），存放于 ``portable_data/models/panns/``。
+checkpoint 来自 Zenodo（Cnn10_mAP=0.380.pth），AudioSet 标签表来自
+audioset_tagging_cnn 仓库，二者均存放于 ``portable_data/models/panns/``
+（绿色便携：不读写用户主目录）。标签表缺失时本模态显式降级
+（``detect()`` 返回 ``degraded=True`` 并记 WARNING），不再静默返回中性分。
 """
 
 from __future__ import annotations
@@ -49,11 +52,17 @@ class PANNModel:
         from panns_inference.pytorch_utils import move_data_to_device
         from src.models.panns_cnn10 import Cnn10  # 本地实现的 Cnn10 架构
 
-        # 确保 checkpoint 就位
+        # 确保 checkpoint 与标签表就位
         ckpt = portable.PANNS_DIR / "Cnn10_mAP=0.380.pth"
         if not ckpt.exists():
             from src.models.downloader import download_panns_checkpoint
             download_panns_checkpoint()
+        if not (portable.PANNS_DIR / "class_labels_indices.csv").exists():
+            from src.models.downloader import download_panns_labels
+            try:
+                download_panns_labels()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("PANNs 标签表下载失败，将尝试回退目录: %s", e)
 
         # panns_inference.AudioTagging 默认用 Cnn14，与 Cnn10 checkpoint 不匹配，
         # 因此直接构建 Cnn10 模型并加载 Cnn10 checkpoint。
@@ -64,21 +73,29 @@ class PANNModel:
         model.eval()
         if "cuda" in str(self.device):
             model.to(self.device)
-            model = torch.nn.DataParallel(model)
         self.model = model
         self._move_to_device = move_data_to_device
         self.labels = self._load_labels()
 
     @staticmethod
     def _load_labels() -> list[str]:
-        """加载 AudioSet 标签列表。"""
+        """加载 AudioSet 标签列表。
+
+        优先 ``portable_data/models/panns/class_labels_indices.csv``；
+        兼容回退 ``~/panns_data/``（panns_inference 的旧默认位置）。
+        """
         import csv
         from pathlib import Path
-        csv_path = Path.home() / "panns_data" / "class_labels_indices.csv"
-        if not csv_path.exists():
+        candidates = [
+            portable.PANNS_DIR / "class_labels_indices.csv",
+            Path.home() / "panns_data" / "class_labels_indices.csv",
+        ]
+        csv_path = next((c for c in candidates if c.exists()), None)
+        if csv_path is None:
+            logger.warning("PANNs 标签表缺失（%s），副语言模态将降级", candidates[0])
             return []
         labels = []
-        with csv_path.open("r") as f:
+        with csv_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f)
             next(reader, None)  # skip header
             for row in reader:
@@ -94,10 +111,15 @@ class PANNModel:
             sr: 采样率（PANNs 期望 32000）。
 
         Returns:
-            ``{"events": [{"label", "name_zh", "confidence"}], "s_paralang", "a_paralang"}``
+            ``{"events": [{"label", "name_zh", "confidence"}], "s_paralang",
+            "a_paralang", "degraded"}``。``degraded=True`` 表示标签表缺失或
+            推理失败，本模态以中性分参与融合。
         """
-        if len(y) == 0 or not self.labels:
-            return {"events": [], "s_paralang": 0.5, "a_paralang": 0.5}
+        if not self.labels:
+            logger.warning("PANNs 标签表不可用，副语言模态降级为中性分")
+            return {"events": [], "s_paralang": 0.5, "a_paralang": 0.5, "degraded": True}
+        if len(y) == 0:
+            return {"events": [], "s_paralang": 0.5, "a_paralang": 0.5, "degraded": False}
 
         # PANNs 期望 (batch, samples)
         clip = y.astype(np.float32)
@@ -108,8 +130,8 @@ class PANNModel:
                 output = self.model(clip_t, None)
             clipwise_output = output["clipwise_output"].data.cpu().numpy()
         except Exception as e:  # noqa: BLE001
-            logger.warning("PANNs 推理失败: %s", e)
-            return {"events": [], "s_paralang": 0.5, "a_paralang": 0.5}
+            logger.warning("PANNs 推理失败，副语言模态降级: %s", e)
+            return {"events": [], "s_paralang": 0.5, "a_paralang": 0.5, "degraded": True}
 
         scores = np.asarray(clipwise_output[0])
 
@@ -129,7 +151,8 @@ class PANNModel:
                     })
 
         s_paralang, a_paralang = self._aggregate(detected)
-        return {"events": detected, "s_paralang": s_paralang, "a_paralang": a_paralang}
+        return {"events": detected, "s_paralang": s_paralang, "a_paralang": a_paralang,
+                "degraded": False}
 
     @staticmethod
     def _aggregate(events: list[dict[str, Any]]) -> tuple[float, float]:
