@@ -72,7 +72,7 @@
 - [ ] 新建 `theme.py`：`PALETTE`（bg #FAF9F5、card #FFFFFF、card_alt #F0EEE6、border #E5E2D9、text #1F1E1D、text_muted #6E6D68、accent #D97757、accent_dark #C4633F、success #788C5D、warning #B8860B、error #BC4C3C、radius 8）；`build_qss()` 读取 `styles.qss.tmpl` 做 `{{key}}` 替换；`app.py` 与 `scripts/gui_screenshot.py` 改用 `build_qss()`。
 - [ ] 5 个控件与 `main_window.py` 内联颜色全部改为引用 `PALETTE`。
 - [ ] 测试：`build_qss()` 不含 `{{`，包含 `#D97757`；`src/gui/**` 除 theme.py 外不出现十六进制色值。
-- [ ] 提交 `feat(ui): Claude 暖奶油主题，调色板单一来源`。
+- [ ] 提交 `feat(ui): 暖奶油主题，调色板单一来源`。
 
 ### Task B2: 几何检查脚本与测试
 - [ ] 新建 `scripts/ui_geometry_check.py`：`collect_issues(window)`，检查 (a) 同父可见兄弟控件矩形相交；(b) 非 wordWrap 的 QLabel/QPushButton `sizeHint().width() > width()`；(c) 子控件超出父 rect；(d) `height() < minimumSizeHint().height()`。

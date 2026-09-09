@@ -1,6 +1,6 @@
 """界面主题：唯一调色板来源。
 
-风格：Claude.ai 暖奶油（warm ivory）——温暖、低饱和、以陶土橙为唯一强调色。
+风格：暖奶油（warm ivory）——温暖、低饱和、以陶土橙为唯一强调色。
 所有控件与样式表都从 :data:`PALETTE` 取色，代码中**不得**再出现硬编码色值
 （``tests/test_gui_smoke.py::test_no_hardcoded_colors_outside_theme`` 守护）。
 

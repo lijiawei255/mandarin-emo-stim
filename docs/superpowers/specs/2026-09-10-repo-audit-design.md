@@ -143,9 +143,9 @@ CSEMOTIONS 由 AIDC-AI（阿里国际数字商业）以 Apache-2.0 发布，其 
 
 ---
 
-## 5. UI 风格替换：Light Bauhaus → Claude 暖奶油（Cloud）
+## 5. UI 风格替换：Light Bauhaus → 暖奶油（warm ivory）
 
-**配色**（用户已确认为 Claude.ai 暖奶油色系）：
+**配色**（用户已确认为暖奶油色系）：
 
 | 角色 | 色值 |
 |------|------|
