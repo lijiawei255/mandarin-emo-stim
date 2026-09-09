@@ -50,7 +50,14 @@ src/
 
 ### 4.1 调整融合权重
 
-编辑 `config/settings.json` 的 `fusion_weights`（科研人员可在「设置 → 高级」修改）。权重和必须为 1。
+编辑 `config/settings.json` 的 `fusion_weights`。权重和必须为 1。这些权重是启发式默认值（未经学习），
+改动后用 `scripts/evaluate.py emotion` 验证效果。
+
+### 4.1.1 韵律基准值
+
+`config/prosody_norms.json` 由 `scripts/evaluate.py calibrate` 在 AISHELL-3 上实测生成（含 mixed / female /
+male 三组）。`src/fusion/normalizer.load_prosody_stats(group=...)` 可按性别选用；文件缺失时回退到
+`LEGACY_PROSODY_STATS`（早期凭空设定值，仅兜底）。
 
 ### 4.2 扩展情感词表
 
@@ -69,21 +76,49 @@ _DictLoader.reload()  # 改完词表后重载
 
 ### 4.4 新增声刺激策略
 
-在 `src/stimulus/strategies.py` 的 `compute_params` 中修改象限锚点或连续映射公式，参数定义见 `config/stimulus_params.json`。
+`src/stimulus/strategies.py` 中每个象限的连续映射拆为 `_pulse_rate / _base_freq / _noise_ratio`，
+`compute_params` 按四象限隶属度对它们加权（软混合）；谐和结构取主象限锚点。参数区间见
+`config/stimulus_params.json`。改动后 `tests/test_scientific_behavior.py` 的方向性与连续性断言必须仍通过，
+并在 `docs/research_notes.md` 标注证据等级。若要实现 ISO 原则式的「先匹配再引导」，见 research_notes §4.2.1。
 
-## 5. 测试
+### 4.5 界面主题
+
+`src/gui/theme.py` 的 `PALETTE` 是唯一调色板来源，`styles.qss.tmpl` 用双花括号占位符引用，
+`build_qss()` 渲染；控件内联样式通过 `theme.inline(...)` 生成。`tests/test_gui_smoke.py` 守护 `src/gui`
+下不得出现写死的十六进制色值。改完主题后跑 `pytest -m slow`（布局几何）并用
+`python scripts/gui_screenshot.py` 在真实平台截图目视核验（offscreen 无中文字体）。
+
+## 5. 测试与静态检查
 
 ```bash
-pytest                          # 单元测试(默认跳过GPU/slow)
-pytest -m "gpu"                 # 模型加载与推理(需GPU+已下载模型)
-pytest -m "slow"                # GUI冒烟等耗时测试
-pytest -m "gpu or slow"         # 全部集成测试
-pytest -q                       # 全部(含集成,默认跳过标记项)
+ruff check .                    # 静态检查（CI 第一道门）
+pytest                          # 单元 + 科学行为回归（默认跳过 GPU/slow）
+pytest -m slow                  # GUI 冒烟 + 布局几何检查（offscreen 可跑）
+pytest -m gpu                   # 模型加载与端到端（需 GPU + 已下载模型）
 ```
+
+| 文件 | 覆盖 |
+|------|------|
+| `tests/test_scientific_behavior.py` | 合成受控信号：各模块对 F0/语速/HNR/粗糙度的响应方向、象限角点与软过渡、Q2/Q3 干预分支方向、跨象限参数连续性。**改动方法学前先看它** |
+| `tests/test_pipeline_degradation.py` | 任一模态失败时降级为中性分并列入 `degraded_modalities`，不崩溃 |
+| `tests/test_gui_layout.py` | 3 分辨率 × 3 状态下无重叠/挤压/溢出/压扁（`scripts/ui_geometry_check.py`） |
+| `tests/test_robustness.py` | 配置校验、OOM 判定、checkpoint 校验、SIGINT 定时器、PANNs 标签降级、LLM greedy、并发写库 |
 
 测试夹具音频：`tests/fixtures/mandarin_sample.wav`（Wikimedia Commons，Public Domain）。
 
-`tests/test_robustness.py` 覆盖异常场景：配置缺失键、OOM 检测、checkpoint 截断、播放器线程安全、CLI 错误、并发 DB 写、边界值输入。
+### 5.1 三层验证评测（`scripts/evaluate.py`）
+
+```bash
+pip install -r requirements-eval.txt
+python scripts/evaluate.py calibrate   # AISHELL-3 → config/prosody_norms.json
+python scripts/evaluate.py neutral     # AISHELL-3 → CER + 中性语音输出分布
+python scripts/evaluate.py emotion     # CSEMOTIONS → 象限 / 方向 / 消融 / 动态权重
+python scripts/evaluate.py report      # 汇总 Markdown 表格 → portable_data/eval/results/
+```
+
+数据运行时按需下载到 `portable_data/eval/`（gitignore），仓库不分发音频。每条语音的模态分数
+缓存为 JSON，消融与动态权重开关在缓存上离线重算。结果与解读见 `docs/evaluation.md`。
+**改动融合权重 / 锚点 / 特征后请重跑 `emotion` 并更新 evaluation.md。**
 
 ## 6. 健壮性设计（异常处理约定）
 
@@ -109,16 +144,18 @@ pytest -q                       # 全部(含集成,默认跳过标记项)
 - **配置校验**：`config_loader.load_settings` 验证 `settings.json` 必需键（见 `_REQUIRED_SETTINGS`），缺失抛 `ConfigError`。**新增配置项时同步更新该校验表。**
 - **数值边界**：`zscore_normalize` 处理 inf/极端值；`WeightedFusion._normalize` 防除零；刺激生成钳制 valence/arousal 到 [0,1]。
 - **空音频**：`recorder.stop()` 返回空数组时上层判空提示；`prosody/physical` 对静音/极短音频返回中性默认值。
+- **模态降级**：`AnalysisPipeline` 中任一模态步骤异常（模型推理失败、PANNs 标签缺失等）→ 该模态置 (0.5, 0.5)
+  并记入 `degraded_modalities`；仅「加载音频」与「融合」失败会抛出。GUI 警告标签与 CLI 都会列出降级模态。
 
 
-## 6. 便携模式与开源合规
+## 7. 便携模式与开源合规
 
 - **所有运行时数据**（模型、录音、历史、日志）位于 `portable_data/`，已被 gitignore 排除。
 - **不要**在代码中硬编码绝对路径，统一用 `src.portable` 的常量。
 - **不要**提交模型文件、个人录音或任何隐私数据。
 - 测试夹具必须标注来源与协议（CC / Public Domain）。
 
-## 7. 依赖版本说明
+## 8. 依赖版本说明
 
 计划文档与实际安装存在以下偏差（已锁定于 requirements.txt）：
 

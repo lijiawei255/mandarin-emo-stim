@@ -16,7 +16,7 @@ pip install -r requirements.txt
 ## 提交规范
 
 1. 从 `main` 拉取最新代码，新建分支开发：`git checkout -b feat/your-feature`。
-2. 代码需通过测试：`pytest`。
+2. 代码需通过 `ruff check .`、`pytest` 与（涉及 GUI 时）`pytest -m slow`。
 3. 提交信息建议带前缀：`feat:` / `fix:` / `docs:` / `test:` / `refactor:`。
 4. 开启 PR，描述改动内容与动机。
 
@@ -28,6 +28,14 @@ pip install -r requirements.txt
 - **不要在代码中硬编码个人路径**，一律使用相对路径或 `src/portable.py` 提供的常量。
 - 新增依赖需确认协议与 Apache 2.0 兼容。
 - 测试夹具（如音频）必须明确标注来源与协议（CC / 公共领域）。
+
+## 方法学改动
+
+本仓库的科研价值在于**如实标注每处方法学的证据等级**。凡改动特征、权重、V-A 锚点、刺激映射或模型：
+
+- 在 `docs/research_notes.md` 对应位置标注 [文献] / [启发式] / [实测]，并给出具体出处；
+- `tests/test_scientific_behavior.py` 的方向性/连续性断言须仍通过，或在 PR 中说明为何应改变；
+- 重跑 `python scripts/evaluate.py emotion` 并更新 `docs/evaluation.md`，**包括变差的项**。
 
 ## 代码风格
 
