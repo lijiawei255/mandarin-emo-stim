@@ -1,0 +1,7 @@
+# 仅 scripts/evaluate.py（三层验证）需要的可选依赖；主程序不依赖。
+#   pip install -r requirements-eval.txt
+# 注：不使用 `datasets` 库——其 import 会加载 Windows 系统证书库，在部分机器上因
+# 证书损坏抛 SSLError；改用 huggingface_hub（已随 transformers 安装）+ pyarrow + soundfile。
+pyarrow>=14.0
+jiwer==3.1.0
+scipy==1.13.1

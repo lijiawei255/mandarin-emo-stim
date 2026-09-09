@@ -133,3 +133,21 @@ def test_fusion_modal_scores_present(fusion):
     result = fusion.fuse(_all_half_scores())
     assert "modal_scores" in result
     assert len(result["modal_scores"]) == 6
+
+
+# ---------------- prosody norms 加载 ----------------
+def test_load_prosody_stats_prefers_file_and_falls_back(tmp_path):
+    import json
+    from src.fusion.normalizer import LEGACY_PROSODY_STATS, load_prosody_stats
+    p = tmp_path / "prosody_norms.json"
+    p.write_text(json.dumps({
+        "mixed": {"mean_f0": {"mu": 201.5, "sigma": 44.0, "n": 600},
+                  "hnr": {"mu": 12.0, "sigma": 0.0, "n": 600}},   # sigma=0 → 回退
+        "female": {"mean_f0": {"mu": 230.0, "sigma": 30.0, "n": 300}},
+    }), encoding="utf-8")
+    s = load_prosody_stats(p)
+    assert s["mean_f0"] == (201.5, 44.0)
+    assert s["hnr"] == LEGACY_PROSODY_STATS["hnr"]          # sigma 非正回退
+    assert s["jitter_local"] == LEGACY_PROSODY_STATS["jitter_local"]  # 缺失回退
+    assert load_prosody_stats(p, group="female")["mean_f0"] == (230.0, 30.0)
+    assert load_prosody_stats(tmp_path / "missing.json") == LEGACY_PROSODY_STATS
