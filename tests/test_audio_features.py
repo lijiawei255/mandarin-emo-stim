@@ -95,3 +95,65 @@ def test_prosody_short_safe(sr):
     feat = prosody.extract(y, sr)
     s, a, _ = prosody.score(feat)
     assert 0.0 <= s <= 1.0
+
+
+# ---------------- prosody: 语速来自 ASR 时间戳、F0 斜率、HNR 负值 ----------------
+def test_syllable_rate_from_asr_timestamps():
+    """字数 / 时间戳覆盖的语音时长 = 音节率。3 字覆盖 0.6 s → 5.0。"""
+    from src.audio import vad
+    asr = {"text": "你好吗", "timestamp": [[0, 200], [200, 400], [400, 600]]}
+    assert vad.syllable_rate(asr) == pytest.approx(5.0)
+
+
+def test_syllable_rate_ignores_punctuation_and_handles_empty():
+    from src.audio import vad
+    asr = {"text": "你好，吗？", "timestamp": [[0, 300], [300, 600], [600, 900]]}
+    assert vad.syllable_rate(asr) == pytest.approx(3 / 0.9)
+    assert vad.syllable_rate({"text": "", "timestamp": []}) is None
+    assert vad.syllable_rate({"text": "你好", "timestamp": []}) is None
+
+
+def test_prosody_extract_uses_external_syllable_rate(pure_tone):
+    y, sr = pure_tone
+    feat = prosody.extract(y, sr, syllable_rate=5.0)
+    assert feat.speech_rate == pytest.approx(5.0)
+    # 未提供时回退到能量法估计（非负）
+    feat2 = prosody.extract(y, sr)
+    assert feat2.speech_rate >= 0.0
+
+
+def _glide(sr, f_start, f_end, dur=1.5, amp=0.2):
+    """线性滑音（F0 从 f_start 到 f_end），相位连续。"""
+    t = np.linspace(0, dur, int(sr * dur), endpoint=False)
+    f_inst = f_start + (f_end - f_start) * t / dur
+    phase = 2 * np.pi * np.cumsum(f_inst) / sr
+    return amp * np.sin(phase)
+
+
+def test_prosody_f0_slope_sign(sr):
+    """F0 下滑 → f0_slope < 0；上升 → > 0（Hz/s，线性回归斜率）。"""
+    falling = prosody.extract(_glide(sr, 300, 200), sr)
+    rising = prosody.extract(_glide(sr, 200, 300), sr)
+    assert falling.f0_slope < -20
+    assert rising.f0_slope > 20
+    # 斜率量级应接近真实值 ±100 Hz / 1.5 s ≈ ±67 Hz/s
+    assert abs(abs(falling.f0_slope) - 66.7) < 25
+
+
+def test_prosody_score_uses_f0_slope_for_negative():
+    """其它指标相同时，F0 下滑越陡负面分越高（n_f0_drop 用真实斜率）。"""
+    base = dict(mean_f0=180.0, std_f0=25.0, f0_range=80.0, speech_rate=4.5,
+                pause_ratio=0.25, hnr=15.0, jitter_local=0.02,
+                shimmer_local=0.08, duration=2.0)
+    flat = prosody.ProsodyFeatures(f0_slope=0.0, **base)
+    falling = prosody.ProsodyFeatures(f0_slope=-60.0, **base)
+    s_flat, _, _ = prosody.score(flat)
+    s_fall, _, _ = prosody.score(falling)
+    assert s_fall > s_flat
+
+
+def test_prosody_hnr_keeps_negative_frames(monkeypatch):
+    """HNR 聚合不再丢弃合法的负值帧（仅排除 parselmouth 的 -200 无定义哨兵）。"""
+    vals = np.array([[-200.0, -3.0, 5.0, -200.0, 2.0]])
+    assert prosody._aggregate_hnr(vals) == pytest.approx(np.mean([-3.0, 5.0, 2.0]))
+    assert prosody._aggregate_hnr(np.array([[-200.0, -200.0]])) == 0.0

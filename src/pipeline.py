@@ -142,7 +142,9 @@ class AnalysisPipeline:
             ctx["degraded"].append("paralang")
 
     def _step_prosody(self, ctx: dict) -> None:
-        feat = prosody_feat.extract(ctx["y"], ctx["sr"])
+        # 语速优先由 ASR 字级时间戳给出（ASR 降级时为 None → 能量法回退）
+        rate = vad.syllable_rate(ctx["asr"]) if ctx.get("asr") else None
+        feat = prosody_feat.extract(ctx["y"], ctx["sr"], syllable_rate=rate)
         s, a, detail = prosody_feat.score(feat)
         ctx["prosody"] = detail
         ctx["s_prosody"], ctx["a_prosody"] = s, a

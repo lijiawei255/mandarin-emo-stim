@@ -47,6 +47,7 @@ STIMULUS_PARAMS_PATH: Path = CONFIG_DIR / "stimulus_params.json"
 # 资源目录
 RESOURCES_DIR: Path = PROJECT_ROOT / "resources"
 DICTIONARIES_DIR: Path = RESOURCES_DIR / "dictionaries"
+PANNS_LABELS_RESOURCE: Path = RESOURCES_DIR / "panns" / "class_labels_indices.csv"
 
 # HF 镜像端点（国内网络环境下 HuggingFace 不可达，统一走 hf-mirror.com）
 HF_MIRROR_ENDPOINT: str = "https://hf-mirror.com"

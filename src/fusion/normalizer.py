@@ -31,6 +31,7 @@ PROSODY_STATS: dict[str, tuple[float, float]] = {
     "hnr": (15.0, 5.0),            # dB
     "jitter_local": (0.02, 0.015),
     "shimmer_local": (0.08, 0.04),
+    "f0_slope": (0.0, 40.0),       # Hz/s，语句级 F0 线性斜率
 }
 
 

@@ -207,6 +207,7 @@ def test_panns_labels_prefer_portable_dir(tmp_path, monkeypatch):
     from src import portable
     from src.models.pann_model import PANNModel
     monkeypatch.setattr(portable, "PANNS_DIR", tmp_path)
+    monkeypatch.setattr(portable, "PANNS_LABELS_RESOURCE", tmp_path / "absent.csv")
     (tmp_path / "class_labels_indices.csv").write_text(
         "index,mid,display_name\n0,/m/x,Speech\n1,/m/y,Laughter\n", encoding="utf-8")
     labels = PANNModel._load_labels()

@@ -44,6 +44,28 @@ def extract_voiced(y: np.ndarray, sr: int,
     return np.concatenate(parts)
 
 
+_PUNCT = set("，。！？、；：,.!?;:\"'“”‘’（）()《》<>【】[]…—-— \t\n")
+
+
+def syllable_rate(asr_result: dict[str, Any]) -> float | None:
+    """由 ASR 字级时间戳直接计算音节率（音节/秒）。
+
+    中文一字一音节，音节数 = 去标点后的字符数；时长 = 各时间戳段的并集长度。
+    这比能量包络穿越计数（``prosody._estimate_speech_rate``）更接近标准的
+    音节率定义（de Jong & Wempe 2009 以音节核计数），且无需额外模型。
+
+    Returns:
+        音节率；文本为空或无时间戳时返回 ``None``（调用方回退到能量法）。
+    """
+    text = asr_result.get("text") or ""
+    n_syl = sum(1 for ch in text if ch not in _PUNCT and not ch.isspace())
+    segments = segments_from_timestamps(asr_result.get("timestamp", []))
+    dur = effective_duration(segments)
+    if n_syl == 0 or dur <= 0:
+        return None
+    return float(n_syl / dur)
+
+
 def vad_from_asr_result(y: np.ndarray, sr: int,
                         asr_result: dict[str, Any]) -> dict[str, Any]:
     """从 ASR 结果中提取 VAD 信息并裁剪有效语音。

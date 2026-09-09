@@ -86,6 +86,11 @@ def download_panns_labels(progress_cb: ProgressCallback | None = None) -> Path:
     dest = portable.PANNS_DIR / "class_labels_indices.csv"
     if dest.exists() and dest.stat().st_size > 10_000:
         return dest
+    if portable.PANNS_LABELS_RESOURCE.exists():
+        # 仓库自带副本（CC BY 4.0），无需联网
+        import shutil
+        shutil.copyfile(portable.PANNS_LABELS_RESOURCE, dest)
+        return dest
     if dest.exists():
         dest.unlink()
     _download_with_retry(PANNS_LABELS_URL, dest, progress_cb, "PANNs 标签表")

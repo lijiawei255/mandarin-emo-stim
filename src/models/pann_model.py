@@ -57,12 +57,6 @@ class PANNModel:
         if not ckpt.exists():
             from src.models.downloader import download_panns_checkpoint
             download_panns_checkpoint()
-        if not (portable.PANNS_DIR / "class_labels_indices.csv").exists():
-            from src.models.downloader import download_panns_labels
-            try:
-                download_panns_labels()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("PANNs 标签表下载失败，将尝试回退目录: %s", e)
 
         # panns_inference.AudioTagging 默认用 Cnn14，与 Cnn10 checkpoint 不匹配，
         # 因此直接构建 Cnn10 模型并加载 Cnn10 checkpoint。
@@ -81,12 +75,13 @@ class PANNModel:
     def _load_labels() -> list[str]:
         """加载 AudioSet 标签列表。
 
-        优先 ``portable_data/models/panns/class_labels_indices.csv``；
-        兼容回退 ``~/panns_data/``（panns_inference 的旧默认位置）。
+        顺序：仓库自带 ``resources/panns/class_labels_indices.csv``（CC BY 4.0，
+        离线可用）→ ``portable_data/models/panns/`` → ``~/panns_data/``（兼容）。
         """
         import csv
         from pathlib import Path
         candidates = [
+            portable.PANNS_LABELS_RESOURCE,
             portable.PANNS_DIR / "class_labels_indices.csv",
             Path.home() / "panns_data" / "class_labels_indices.csv",
         ]
