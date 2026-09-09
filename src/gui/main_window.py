@@ -564,8 +564,7 @@ class MainWindow(QMainWindow):
         degraded = result.get("degraded_modalities") or []
         if degraded:
             warnings.append("⚠ 以下模态异常，已按中性分参与融合：" + "、".join(degraded))
-        self.snr_warning.setText("
-".join(warnings))
+        self.snr_warning.setText("\n".join(warnings))
 
         # 多模态分解
         self.modal_bars.update_scores(result["modal_scores"], axis="negative")
