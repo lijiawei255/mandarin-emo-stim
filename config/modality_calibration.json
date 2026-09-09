@@ -1,0 +1,61 @@
+{
+  "_meta": {
+    "source": "AISHELL-3 test subset (emotion-neutral read speech), raw modality means",
+    "definition": "offset = 0.5 - mean_raw, clipped to ±0.3; applied additively in WeightedFusion",
+    "n": 171,
+    "generated": "2026-09-10",
+    "script": "scripts/evaluate.py neutral"
+  },
+  "modal_means_raw": {
+    "acoustic": {
+      "negative": 0.5019813575746029,
+      "arousal": 0.4109953782299419
+    },
+    "prosody": {
+      "negative": 0.4645162820729899,
+      "arousal": 0.49482165259038347
+    },
+    "paralang": {
+      "negative": 0.5,
+      "arousal": 0.5
+    },
+    "physical": {
+      "negative": 0.6347508193649348,
+      "arousal": 0.3418960853460902
+    },
+    "text_llm": {
+      "negative": 0.52046783625731,
+      "arousal": 0.5076023391812866
+    },
+    "text_stat": {
+      "negative": 0.4966997950163585,
+      "arousal": 0.47254653926541657
+    }
+  },
+  "offsets": {
+    "acoustic": {
+      "negative": -0.002,
+      "arousal": 0.089
+    },
+    "prosody": {
+      "negative": 0.0355,
+      "arousal": 0.0052
+    },
+    "paralang": {
+      "negative": 0.0,
+      "arousal": 0.0
+    },
+    "physical": {
+      "negative": -0.1348,
+      "arousal": 0.1581
+    },
+    "text_llm": {
+      "negative": -0.0205,
+      "arousal": -0.0076
+    },
+    "text_stat": {
+      "negative": 0.0033,
+      "arousal": 0.0275
+    }
+  }
+}

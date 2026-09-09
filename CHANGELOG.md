@@ -3,6 +3,32 @@
 本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-09-10
+
+针对 0.1.0 验证报告的不利结论做的方法学修订，全部评测重跑；情绪语料按说话人划分 dev / test，
+权重只在 dev 上选择。结果对照见 `docs/evaluation.md` §0。
+
+### 方法学
+- **中性校准（基线归一化）**：融合前对每个模态加常数偏移（`config/modality_calibration.json`，
+  由 `scripts/evaluate.py neutral` 在 AISHELL-3 中性语音上实测 offset = 0.5 − 原始均值，钳制 ±0.3）。
+  `settings.json` 的 `fusion_calibration.enabled` 可关闭；结果新增 `modal_scores_raw`。
+- **LLM 提示重校**：系统提示明确「无情绪陈述 ≈ 0.5」，few-shot 加入中性陈述与平静正面例子；
+  对中性文本的负面分由 0.66 降到 0.52。
+- **韵律唤醒加入 jitter / shimmer**（各 0.10，其余权重重新归一），依据 Banse & Scherer 1996。
+- **文本统计唤醒以 0.5 为基线**（旧公式基线 0.1，陈述句恒为低唤醒）；可选接入 CVAW 维度词典
+  （`resources/dictionaries/cvaw.csv`，用户自行获取，仓库不分发）。
+- **物理声学负面分去掉固定项** 0.3·0.5，权重和为 1。
+
+### 结果（CSEMOTIONS，n=294 计入象限）
+- 象限准确率 0.52 → **0.68**（test 说话人 0.63）；效价 ρ 0.69 → **0.79**；方向检验 8/8。
+- 多模态融合 0.68 **高于** emotion2vec 单模态 0.61（0.1.0 为 0.52 < 0.55）；去掉 LLM 支路由
+  「提升」变为「下降」。
+- 中性语音 negative μ 0.55 → **0.51**，判入 Q3 的比例 62% → 43%。
+- **未改善**：唤醒度 ρ 0.31（test 0.24），sad 多数判入 Q2；动态权重仍未被检验。
+
+### 评测脚本
+- `neutral` 写出中性校准文件；`emotion` 报告校准开/关、dev/test、权重网格；消融改在原始分上重算。
+
 ## [0.1.0] - 2026-09-10
 
 首个公开版本。在功能完成的基础上完成了一轮**科学性审核**：把每处方法学按证据等级
@@ -68,4 +94,5 @@
 - 依赖修正：slab 1.8.2、panns-inference 0.1.1、transformers 4.51.3、emotion2vec v2.0.5、
   Qwen/Qwen3-1.7B、自行实现 PANNs Cnn10。
 
+[0.2.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.2.0
 [0.1.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.1.0
