@@ -45,7 +45,7 @@ class ModalBars(QWidget):
             row.setSpacing(8)
             name = QLabel(label)
             name.setStyleSheet(inline(color="text", font_weight="600", border="none"))
-            name.setFixedWidth(72)
+            name.setMinimumWidth(name.fontMetrics().horizontalAdvance("四个汉字") + 8)
             row.addWidget(name)
 
             bar = QProgressBar()
@@ -57,8 +57,9 @@ class ModalBars(QWidget):
 
             val = QLabel("0.50")
             val.setStyleSheet(inline(color="text", font_weight="600", border="none"))
-            val.setFixedWidth(40)
-            val.setAlignment(Qt.AlignmentFlag.AlignRight)
+            # 宽度按字体度量而非写死像素：不同平台/字体下 "0.00" 宽度差异可达 30%
+            val.setMinimumWidth(val.fontMetrics().horizontalAdvance("0.00") + 10)
+            val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             row.addWidget(val)
 
             layout.addLayout(row)

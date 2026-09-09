@@ -179,7 +179,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._h1("ASR 转写"))
         self.asr_text = QTextEdit()
         self.asr_text.setReadOnly(True)
-        self.asr_text.setFixedHeight(72)
+        # 高度按字体度量（约 3.5～4.5 行）给一个区间而非写死像素：样式表 padding
+        # 在 show() 后才计入 minimumSizeHint，固定像素会在部分字体下压扁内容。
+        line = self.asr_text.fontMetrics().lineSpacing()
+        self.asr_text.setMinimumHeight(int(line * 3.5) + 24)
+        self.asr_text.setMaximumHeight(int(line * 4.5) + 24)
         self.asr_text.setPlaceholderText("（转写结果将显示于此）")
         layout.addWidget(self.asr_text)
         layout.addStretch()
