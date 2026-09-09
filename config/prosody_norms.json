@@ -1,0 +1,154 @@
+{
+  "_meta": {
+    "source": "AISHELL-3 test set (OpenSLR 93, Apache-2.0), HF mirror shenyunhang/AISHELL-3",
+    "sampling": "stratified by gender, 300 per gender, quota per speaker, seed=20260910",
+    "n_total": 421,
+    "n_female": 180,
+    "n_male": 241,
+    "speech_rate_definition": "transcript characters / duration covered by Paraformer char-level timestamps (same as pipeline vad.syllable_rate)",
+    "extractor": "src.features.prosody.extract (parselmouth, 16 kHz)",
+    "generated": "2026-09-10",
+    "script": "scripts/evaluate.py calibrate"
+  },
+  "mixed": {
+    "mean_f0": {
+      "mu": 177.5049,
+      "sigma": 45.9055,
+      "n": 421
+    },
+    "std_f0": {
+      "mu": 28.6133,
+      "sigma": 16.4474,
+      "n": 421
+    },
+    "f0_range": {
+      "mu": 133.3463,
+      "sigma": 84.0083,
+      "n": 421
+    },
+    "speech_rate": {
+      "mu": 4.227,
+      "sigma": 0.6025,
+      "n": 421
+    },
+    "pause_ratio": {
+      "mu": 0.4465,
+      "sigma": 0.13,
+      "n": 421
+    },
+    "hnr": {
+      "mu": 11.6214,
+      "sigma": 2.2344,
+      "n": 421
+    },
+    "jitter_local": {
+      "mu": 0.0239,
+      "sigma": 0.0072,
+      "n": 421
+    },
+    "shimmer_local": {
+      "mu": 0.122,
+      "sigma": 0.0216,
+      "n": 421
+    },
+    "f0_slope": {
+      "mu": -27.0233,
+      "sigma": 52.351,
+      "n": 421
+    }
+  },
+  "female": {
+    "mean_f0": {
+      "mu": 220.1768,
+      "sigma": 32.4039,
+      "n": 180
+    },
+    "std_f0": {
+      "mu": 37.6696,
+      "sigma": 12.3224,
+      "n": 180
+    },
+    "f0_range": {
+      "mu": 176.9451,
+      "sigma": 73.3506,
+      "n": 180
+    },
+    "speech_rate": {
+      "mu": 4.2265,
+      "sigma": 0.6342,
+      "n": 180
+    },
+    "pause_ratio": {
+      "mu": 0.4441,
+      "sigma": 0.11,
+      "n": 180
+    },
+    "hnr": {
+      "mu": 12.6844,
+      "sigma": 2.1038,
+      "n": 180
+    },
+    "jitter_local": {
+      "mu": 0.0225,
+      "sigma": 0.0063,
+      "n": 180
+    },
+    "shimmer_local": {
+      "mu": 0.1173,
+      "sigma": 0.0208,
+      "n": 180
+    },
+    "f0_slope": {
+      "mu": -34.5654,
+      "sigma": 54.337,
+      "n": 180
+    }
+  },
+  "male": {
+    "mean_f0": {
+      "mu": 145.6337,
+      "sigma": 22.7813,
+      "n": 241
+    },
+    "std_f0": {
+      "mu": 21.8494,
+      "sigma": 15.8967,
+      "n": 241
+    },
+    "f0_range": {
+      "mu": 100.7829,
+      "sigma": 76.4669,
+      "n": 241
+    },
+    "speech_rate": {
+      "mu": 4.2273,
+      "sigma": 0.5791,
+      "n": 241
+    },
+    "pause_ratio": {
+      "mu": 0.4483,
+      "sigma": 0.1433,
+      "n": 241
+    },
+    "hnr": {
+      "mu": 10.8274,
+      "sigma": 1.9887,
+      "n": 241
+    },
+    "jitter_local": {
+      "mu": 0.025,
+      "sigma": 0.0077,
+      "n": 241
+    },
+    "shimmer_local": {
+      "mu": 0.1255,
+      "sigma": 0.0216,
+      "n": 241
+    },
+    "f0_slope": {
+      "mu": -21.3902,
+      "sigma": 50.1946,
+      "n": 241
+    }
+  }
+}

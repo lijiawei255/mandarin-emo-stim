@@ -147,6 +147,10 @@ annotated in **[docs/research_notes.md](./docs/research_notes.md)** (Chinese).
 | 2 | CSEMOTIONS (Apache-2.0, acted emotions by professional voice actors) | V-A direction consistency across 7 emotions, quadrant confusion matrix, 6-modality ablation, dynamic-weight on/off | done |
 | 3 | Synthetic controlled signals (no external data) | Response direction of every module to F0 / rate / HNR / roughness manipulations; intervention-branch direction; continuity across quadrants | in CI |
 
+**v0.1.0 headline results** (see evaluation.md): relative V-A ordering of 7 acted emotions passes 8/8 pairwise checks (valence Spearman ρ = 0.69, arousal 0.32);
+quadrant accuracy 0.52 (chance 0.25, majority 0.41); **a systematic negative bias exists** (62% of emotion-neutral read speech lands in Q3);
+**multimodal fusion did not beat emotion2vec alone on this corpus** (0.52 vs 0.55) and dropping the LLM text branch raises it to 0.62; dynamic weights never triggered under studio conditions.
+
 Known limits: acted emotion is exaggerated relative to natural emotion and **overestimates**
 real-world performance; studio-quality audio cannot exercise the noise-robustness rules; the ASR
 confidence is a text-length proxy; fusion weights and V-A anchors are heuristic, not learned.
