@@ -1,12 +1,14 @@
-"""状态指示块控件（浅色包豪斯风格）。
+"""状态指示块控件。
 
-浅灰底 + 深色文字，水平排列运行状态、推理模式、模型加载进度。
-状态色语义化：就绪=绿、运行中=主色蓝、错误=红。
+次级面板底色，水平排列运行状态、推理模式、模型加载进度。
+状态色语义化（theme.PALETTE）：就绪=success、运行中=accent、错误=error。
 """
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
+
+from src.gui.theme import inline
 
 
 class StatusBlock(QFrame):
@@ -24,7 +26,7 @@ class StatusBlock(QFrame):
         self.mode_label = QLabel("推理模式：—")
         self.model_label = QLabel("模型：0/4")
         for lbl in (self.status_label, self.mode_label, self.model_label):
-            lbl.setStyleSheet("color: #1A1A1A; font-size: 12px; border: none;")
+            lbl.setStyleSheet(inline(color="text", font_size="12px", border="none"))
         layout.addWidget(self.status_label)
         layout.addWidget(self.mode_label)
         layout.addWidget(self.model_label)
@@ -34,15 +36,15 @@ class StatusBlock(QFrame):
         """设置运行状态（按语义着色）。"""
         self.status_label.setText(status)
         if any(k in status for k in ("就绪", "完成")):
-            color = "#2E7D32"   # 成功绿
+            color = "success"
         elif any(k in status for k in ("失败", "错误", "中断")):
-            color = "#C62828"   # 错误红
+            color = "error"
         elif any(k in status for k in ("中", "加载", "分析", "生成", "录音")):
-            color = "#1F5FA8"   # 主色蓝（运行中）
+            color = "accent"    # 运行中
         else:
-            color = "#1A1A1A"
+            color = "text"
         self.status_label.setStyleSheet(
-            f"color: {color}; font-size: 12px; font-weight: 600; border: none;"
+            inline(color=color, font_size="12px", font_weight="600", border="none")
         )
 
     def set_mode(self, mode: str) -> None:

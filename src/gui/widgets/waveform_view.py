@@ -1,6 +1,6 @@
 """波形可视化控件（pyqtgraph）。
 
-浅色包豪斯风格：白色背景上绘制主色（蓝）波形线条，播放时主色进度线。
+卡片底色上绘制强调色波形，播放时强调色虚线进度。配色来自 theme.PALETTE。
 为性能对长波形做下采样（每像素 ~1 个点）。
 """
 
@@ -10,8 +10,9 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-# 包豪斯主色
-_PRIMARY = "#1F5FA8"
+from src.gui.theme import color
+
+_PRIMARY = color("accent")
 
 
 class WaveformView(QWidget):
@@ -26,17 +27,17 @@ class WaveformView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        pg.setConfigOption("background", "#FFFFFF")
-        pg.setConfigOption("foreground", "#1A1A1A")
+        pg.setConfigOption("background", color("card"))
+        pg.setConfigOption("foreground", color("text"))
         self.plot = pg.PlotWidget()
         self.plot.setMouseEnabled(False, False)
         self.plot.hideButtons()
-        self.plot.getAxis("bottom").setPen("#9A9A9A")
-        self.plot.getAxis("left").setPen("#9A9A9A")
-        self.plot.getAxis("bottom").setTextPen("#6A6A6A")
-        self.plot.getAxis("left").setTextPen("#6A6A6A")
-        self.plot.setLabel("bottom", "时间 (s)", color="#6A6A6A")
-        self.plot.setLabel("left", "幅度", color="#6A6A6A")
+        self.plot.getAxis("bottom").setPen(color("border_strong"))
+        self.plot.getAxis("left").setPen(color("border_strong"))
+        self.plot.getAxis("bottom").setTextPen(color("text_muted"))
+        self.plot.getAxis("left").setTextPen(color("text_muted"))
+        self.plot.setLabel("bottom", "时间 (s)", color=color("text_muted"))
+        self.plot.setLabel("left", "幅度", color=color("text_muted"))
         self.plot.showGrid(x=True, y=False, alpha=0.15)
         layout.addWidget(self.plot)
 

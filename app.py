@@ -64,12 +64,9 @@ class Application:
 
         self._install_crash_handlers(self._qt_app)
 
-        # 加载样式表
-        qss_path = Path(__file__).parent / "src" / "gui" / "styles.qss"
-        if not qss_path.exists():
-            qss_path = Path(__file__).parent / "gui" / "styles.qss"
-        if qss_path.exists():
-            self._qt_app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
+        # 加载样式表（由 theme.PALETTE 渲染模板）
+        from src.gui.theme import build_qss
+        self._qt_app.setStyleSheet(build_qss())
 
         from src.gui.main_window import MainWindow
         self._window = MainWindow(config=self.config)

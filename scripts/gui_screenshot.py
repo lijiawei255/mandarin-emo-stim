@@ -24,10 +24,9 @@ def main() -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
 
-    # 加载样式表
-    qss = PROJECT_ROOT / "src" / "gui" / "styles.qss"
-    if qss.exists():
-        app.setStyleSheet(qss.read_text(encoding="utf-8"))
+    # 加载样式表（theme 渲染）
+    from src.gui.theme import build_qss
+    app.setStyleSheet(build_qss())
 
     # 不自动加载模型(避免21s等待与显存占用),用桩数据填充界面以验证布局
     win = MainWindow(auto_load_models=False)

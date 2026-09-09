@@ -1,6 +1,6 @@
 """多模态分解详情控件（6 个模态的水平条形图）。
 
-浅色包豪斯风格：浅灰底面板，深色标签 + 主色（蓝）进度条 + 深色数值。
+配色全部来自 theme.PALETTE；检测到副语言事件时用 warning 色强调。
 """
 
 from __future__ import annotations
@@ -8,6 +8,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar,
                                QVBoxLayout, QWidget)
+
+from src.gui.theme import inline
 
 # 6 模态显示名（中文）
 MODAL_LABELS = {
@@ -42,7 +44,7 @@ class ModalBars(QWidget):
             row = QHBoxLayout()
             row.setSpacing(8)
             name = QLabel(label)
-            name.setStyleSheet("color: #1A1A1A; font-weight: 600; border: none;")
+            name.setStyleSheet(inline(color="text", font_weight="600", border="none"))
             name.setFixedWidth(72)
             row.addWidget(name)
 
@@ -51,15 +53,11 @@ class ModalBars(QWidget):
             bar.setValue(0)
             bar.setTextVisible(False)
             bar.setFixedHeight(8)
-            bar.setStyleSheet(
-                "QProgressBar { border: 1px solid #D9D9D9; background: #F0F0F0; }"
-                "QProgressBar::chunk { background: #1F5FA8; }"
-            )
             row.addWidget(bar, 1)
 
             val = QLabel("0.50")
-            val.setStyleSheet("color: #1A1A1A; font-weight: 600; border: none;")
-            val.setFixedWidth(36)
+            val.setStyleSheet(inline(color="text", font_weight="600", border="none"))
+            val.setFixedWidth(40)
             val.setAlignment(Qt.AlignmentFlag.AlignRight)
             row.addWidget(val)
 
@@ -69,9 +67,7 @@ class ModalBars(QWidget):
 
         # 副语言事件标签区（状态色：默认中性，检测到时主色）
         self.events_label = QLabel("（无副语言事件）")
-        self.events_label.setStyleSheet(
-            "color: #6A6A6A; font-size: 12px; border: none; padding-top: 4px;"
-        )
+        self.events_label.setStyleSheet(self._events_style(active=False))
         self.events_label.setWordWrap(True)
         layout.addWidget(self.events_label)
         layout.addStretch()
@@ -90,18 +86,21 @@ class ModalBars(QWidget):
             bar.setValue(int(val * 1000))
             self._value_labels[key].setText(f"{val:.2f}")
 
+    @staticmethod
+    def _events_style(active: bool) -> str:
+        if active:
+            return inline(color="warning", font_weight="600", font_size="12px",
+                          border="none", padding_top="4px")
+        return inline(color="text_muted", font_size="12px", border="none",
+                      padding_top="4px")
+
     def update_events(self, events: list[dict]) -> None:
         """更新副语言事件标签（检测到时用警告色强调）。"""
         if not events:
             self.events_label.setText("（无副语言事件）")
-            self.events_label.setStyleSheet(
-                "color: #6A6A6A; font-size: 12px; border: none; padding-top: 4px;"
-            )
+            self.events_label.setStyleSheet(self._events_style(active=False))
             return
         names = [f"[{ev.get('name_zh', ev.get('label', '?'))} "
                  f"{ev.get('confidence', 0):.2f}]" for ev in events]
         self.events_label.setText(" ".join(names))
-        self.events_label.setStyleSheet(
-            "color: #B8860B; font-weight: 600; font-size: 12px; "
-            "border: none; padding-top: 4px;"
-        )
+        self.events_label.setStyleSheet(self._events_style(active=True))

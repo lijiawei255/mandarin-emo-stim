@@ -10,8 +10,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
-                               QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QFrame, QLabel, QProgressBar, QVBoxLayout,
+                               QWidget)
+
+from src.gui.theme import inline
 
 
 # 4 个加载阶段的中文展示名（与 ModelManager.load_all 顺序一致）
@@ -49,11 +51,11 @@ class LoadingOverlay(QWidget):
         card_layout.setSpacing(12)
 
         title = QLabel("模型加载中")
-        title.setStyleSheet("font-size: 20px; font-weight: 700; color: #1A1A1A; border: none;")
+        title.setStyleSheet(inline(font_size="20px", font_weight="700", color="text", border="none"))
         card_layout.addWidget(title)
 
         self.hint = QLabel("首次启动需加载 4 个模型（约需 20-40 秒），请稍候…")
-        self.hint.setStyleSheet("font-size: 12px; color: #6A6A6A; border: none;")
+        self.hint.setStyleSheet(inline(font_size="12px", color="text_muted", border="none"))
         self.hint.setWordWrap(True)
         card_layout.addWidget(self.hint)
 
@@ -64,25 +66,18 @@ class LoadingOverlay(QWidget):
         self.total_bar.setFixedHeight(20)
         self.total_bar.setTextVisible(True)
         self.total_bar.setFormat("总进度 %p%")
-        self.total_bar.setStyleSheet(
-            "QProgressBar { border: 1px solid #D9D9D9; background: #F0F0F0; "
-            "font-weight: 600; color: #1A1A1A; }"
-            "QProgressBar::chunk { background: #1F5FA8; }"
-        )
         card_layout.addWidget(self.total_bar)
 
         # 当前阶段（主色）
         self.current_label = QLabel("准备中…")
-        self.current_label.setStyleSheet(
-            "font-size: 13px; font-weight: 700; color: #1F5FA8; border: none;"
-        )
+        self.current_label.setStyleSheet(self._current_style("accent"))
         card_layout.addWidget(self.current_label)
 
         # 4 个阶段的状态列表
         self.stage_labels: list[QLabel] = []
         for _, display in STAGE_LABELS:
             lbl = QLabel(f"○  {display}")
-            lbl.setStyleSheet("font-size: 12px; color: #9A9A9A; border: none;")
+            lbl.setStyleSheet(self._stage_style("pending"))
             self.stage_labels.append(lbl)
             card_layout.addWidget(lbl)
 
@@ -91,17 +86,28 @@ class LoadingOverlay(QWidget):
         outer.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
         outer.addStretch()
 
+    @staticmethod
+    def _current_style(color_key: str) -> str:
+        return inline(font_size="13px", font_weight="700", color=color_key, border="none")
+
+    @staticmethod
+    def _stage_style(state: str) -> str:
+        """阶段行样式：pending（待加载）/ active（进行中）/ done（完成）。"""
+        if state == "done":
+            return inline(font_size="12px", color="success", font_weight="600", border="none")
+        if state == "active":
+            return inline(font_size="12px", color="accent", font_weight="700", border="none")
+        return inline(font_size="12px", color="text_faint", border="none")
+
     def _reset(self) -> None:
         """重置为初始状态。"""
         self.total_bar.setValue(0)
         self.current_label.setText("准备中…")
-        self.current_label.setStyleSheet(
-            "font-size: 13px; font-weight: 700; color: #1F5FA8; border: none;"
-        )
+        self.current_label.setStyleSheet(self._current_style("accent"))
         for i, lbl in enumerate(self.stage_labels):
             _, display = STAGE_LABELS[i]
             lbl.setText(f"○  {display}")
-            lbl.setStyleSheet("font-size: 12px; color: #9A9A9A; border: none;")
+            lbl.setStyleSheet(self._stage_style("pending"))
 
     # ------------------------------------------------------------------ #
     def show_loading(self) -> None:
@@ -141,13 +147,13 @@ class LoadingOverlay(QWidget):
             _, display = STAGE_LABELS[i]
             if stage_idx is not None and i < stage_idx:
                 lbl.setText(f"✓  {display}")
-                lbl.setStyleSheet("font-size: 12px; color: #2E7D32; font-weight: 600; border: none;")  # 成功绿
+                lbl.setStyleSheet(self._stage_style("done"))
             elif stage_idx is not None and i == stage_idx:
                 lbl.setText(f"●  {display}")
-                lbl.setStyleSheet("font-size: 12px; color: #1F5FA8; font-weight: 700; border: none;")  # 主色蓝（进行中）
+                lbl.setStyleSheet(self._stage_style("active"))
             else:
                 lbl.setText(f"○  {display}")
-                lbl.setStyleSheet("font-size: 12px; color: #9A9A9A; border: none;")  # 待加载灰
+                lbl.setStyleSheet(self._stage_style("pending"))
 
         self.current_label.setText(f"正在加载：{stage}")
 
@@ -156,19 +162,16 @@ class LoadingOverlay(QWidget):
         for i, lbl in enumerate(self.stage_labels):
             _, display = STAGE_LABELS[i]
             lbl.setText(f"✓  {display}")
-            lbl.setStyleSheet("font-size: 12px; color: #2E7D32; font-weight: 600; border: none;")  # 成功绿
+            lbl.setStyleSheet(self._stage_style("done"))
         self.total_bar.setValue(100)
         self.current_label.setText("加载完成 ✓")
-        self.current_label.setStyleSheet(
-            "font-size: 13px; font-weight: 700; color: #2E7D32; border: none;"
-        )
+        self.current_label.setStyleSheet(self._current_style("success"))
         # 短暂展示后隐藏（由调用方控制，或直接隐藏）
         self.hide()
 
     def show_failed(self, msg: str) -> None:
         """加载失败：显示错误信息。"""
         self.current_label.setText(f"加载失败：{msg}")
-        self.current_label.setStyleSheet(
-            "font-size: 13px; font-weight: 700; color: #C62828; border: none;"  # 错误红
-        )
+        self.current_label.setStyleSheet(self._current_style("error"))
+        self.current_label.setWordWrap(True)
         self.hint.setText("模型加载失败，请查看错误信息。可关闭后重试或检查网络/显存。")

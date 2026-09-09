@@ -1,0 +1,211 @@
+/* Claude 暖奶油主题（warm ivory）——由 src/gui/theme.py::build_qss 渲染。
+   双花括号占位符来自 theme.PALETTE；请勿在此写死色值。 */
+
+/* ===== 全局 ===== */
+QWidget {
+    background-color: {{bg}};
+    color: {{text}};
+    font-family: {{font_family}};
+    font-size: 13px;
+}
+QMainWindow, QWidget#CentralWidget {
+    background-color: {{bg}};
+}
+
+/* ===== 面板卡片 ===== */
+QFrame#InputPanel, QFrame#MetricsPanel, QFrame#ModalPanel, QFrame#StimulusPanel {
+    background-color: {{card}};
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+}
+QFrame#InputPanel, QFrame#ModalPanel {
+    background-color: {{card_alt}};
+}
+/* 卡片内部控件默认透明，继承卡片底色 */
+QFrame#InputPanel QWidget, QFrame#MetricsPanel QWidget,
+QFrame#ModalPanel QWidget, QFrame#StimulusPanel QWidget {
+    background-color: transparent;
+}
+
+/* ===== 通用按钮 ===== */
+QPushButton {
+    border: 1px solid {{border_strong}};
+    border-radius: {{radius_sm}};
+    padding: 8px 14px;
+    background-color: {{card}};
+    color: {{text}};
+    font-weight: 600;
+}
+QPushButton:hover {
+    background-color: {{accent_soft}};
+    border-color: {{accent}};
+    color: {{accent_dark}};
+}
+QPushButton:pressed {
+    background-color: {{accent}};
+    color: {{card}};
+    border-color: {{accent_dark}};
+}
+QPushButton:disabled {
+    background-color: {{card_alt}};
+    color: {{text_faint}};
+    border-color: {{border}};
+}
+QPushButton:checked {
+    background-color: {{accent}};
+    color: {{card}};
+    border-color: {{accent_dark}};
+}
+
+/* 主操作按钮（生成刺激）：实心强调色 */
+QPushButton#btn_generate {
+    background-color: {{accent}};
+    color: {{card}};
+    border-color: {{accent}};
+}
+QPushButton#btn_generate:hover {
+    background-color: {{accent_dark}};
+    color: {{card}};
+}
+QPushButton#btn_generate:disabled {
+    background-color: {{accent_soft}};
+    color: {{text_faint}};
+    border-color: {{accent_soft}};
+}
+
+/* ===== 标题 / 标签 ===== */
+QLabel#SectionTitle {
+    font-size: 12px;
+    font-weight: 700;
+    color: {{text_muted}};
+    letter-spacing: 1px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid {{border}};
+}
+QLabel[role="success"] { color: {{success}}; font-weight: 600; }
+QLabel[role="warning"] { color: {{warning}}; font-weight: 600; }
+QLabel[role="error"]   { color: {{error}};   font-weight: 600; }
+
+/* ===== 进度条 / 滑块 ===== */
+QProgressBar {
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    background-color: {{card_alt}};
+    text-align: center;
+    font-weight: 600;
+    color: {{text}};
+}
+QProgressBar::chunk {
+    background-color: {{accent}};
+    border-radius: 3px;
+}
+QSlider::groove:horizontal {
+    border: none;
+    height: 4px;
+    border-radius: 2px;
+    background: {{border}};
+}
+QSlider::handle:horizontal {
+    background: {{accent}};
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+    border: none;
+}
+QSlider::sub-page:horizontal {
+    background: {{accent}};
+    border-radius: 2px;
+}
+
+/* ===== 下拉框 ===== */
+QComboBox {
+    border: 1px solid {{border_strong}};
+    background-color: {{card}};
+    padding: 6px 10px;
+    border-radius: {{radius_sm}};
+}
+QComboBox:hover {
+    border-color: {{accent}};
+}
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+QComboBox QAbstractItemView {
+    border: 1px solid {{border}};
+    background-color: {{card}};
+    selection-background-color: {{accent}};
+    selection-color: {{card}};
+}
+
+/* ===== 文本区 ===== */
+QTextEdit, QPlainTextEdit {
+    border: 1px solid {{border}};
+    border-radius: {{radius_sm}};
+    background-color: {{card}};
+    color: {{text}};
+    padding: 4px;
+}
+
+/* ===== 菜单栏 ===== */
+QMenuBar {
+    background-color: {{bg}};
+    color: {{text}};
+    border-bottom: 1px solid {{border}};
+    padding: 2px;
+}
+QMenuBar::item {
+    padding: 6px 12px;
+    background: transparent;
+    border-radius: {{radius_sm}};
+}
+QMenuBar::item:selected {
+    background-color: {{accent_soft}};
+    color: {{accent_dark}};
+}
+QMenu {
+    border: 1px solid {{border}};
+    background-color: {{card}};
+    border-radius: {{radius_sm}};
+}
+QMenu::item {
+    padding: 6px 24px;
+}
+QMenu::item:selected {
+    background-color: {{accent}};
+    color: {{card}};
+}
+
+/* ===== 状态栏 ===== */
+QFrame#StatusPanel {
+    background-color: {{card_alt}};
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+}
+QFrame#StatusPanel QLabel {
+    color: {{text}};
+    font-size: 12px;
+    background-color: transparent;
+}
+
+/* ===== 模型加载浮层 ===== */
+#LoadingOverlay {
+    background-color: rgba(250, 249, 245, 235);
+}
+#LoadingCard {
+    background-color: {{card}};
+    border: 1px solid {{border_strong}};
+    border-radius: {{radius}};
+}
+#LoadingCard QWidget {
+    background-color: transparent;
+}
+
+/* ===== 提示框 ===== */
+QMessageBox {
+    background-color: {{card}};
+}
+QMessageBox QLabel {
+    background-color: transparent;
+}

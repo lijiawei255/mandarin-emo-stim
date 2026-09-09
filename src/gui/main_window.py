@@ -1,10 +1,10 @@
-"""浅色包豪斯（Light Bauhaus）风格主窗口。
+"""主窗口（Claude 暖奶油主题）。
 
-设计原则：功能优先（去除冗余装饰）、几何网格（8px 对齐）、高对比度
-（浅色背景 + 深色文字）、有限色彩（主色 Bauhaus 蓝 #1F5FA8 + 中性灰阶；
-状态色语义化：成功绿 / 警告琥珀 / 错误红）。
+设计原则：功能优先、8px 网格对齐、暖色低饱和底色（ivory）配深色文字、
+单一强调色（陶土橙）用于主操作与运行态；状态色语义化（success / warning /
+error）。全部色值来自 ``src/gui/theme.py``，本文件不写死颜色。
 
-五大功能分区（卡片式，1px 细线分隔，无厚色块）：
+五大功能分区（圆角卡片，1px 细线分隔）：
     左   : 音频输入控制（开始/上传/设备选择/录制计时）
     中   : 核心情感量化展示（NEGATIVE/VALENCE/AROUSAL + 象限 + ASR）
     右   : 多模态分解详情（6 模态分项条形图 + 副语言事件）
@@ -32,6 +32,7 @@ from src import portable
 from src.audio.loader import save_wav
 from src.audio.recorder import AudioRecorder
 from src.config_loader import load_settings
+from src.gui.theme import inline
 from src.gui.threads import AnalysisWorker, StimulusWorker
 from src.gui.widgets.loading_overlay import LoadingOverlay
 from src.gui.widgets.metric_bar import MetricBar
@@ -79,6 +80,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("CentralWidget")
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
@@ -169,8 +171,8 @@ class MainWindow(QMainWindow):
 
         self.quadrant_label = QLabel("情绪象限：—")
         self.quadrant_label.setStyleSheet(
-            "font-size: 18px; font-weight: 700; color: #1F5FA8; "
-            "padding: 8px 0; border: none;"
+            inline(font_size="18px", font_weight="700", color="accent_dark",
+                   padding="8px 0", border="none")
         )
         layout.addWidget(self.quadrant_label)
 
@@ -218,7 +220,7 @@ class MainWindow(QMainWindow):
         head.addStretch()
         self.param_label = QLabel("♩=—  f=—  时长=—")
         self.param_label.setStyleSheet(
-            "color: #6A6A6A; font-size: 12px; border: none;"
+            inline(color="text_muted", font_size="12px", border="none")
         )
         head.addWidget(self.param_label)
         layout.addLayout(head)
@@ -264,7 +266,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(act_about)
 
     def _h1(self, text: str) -> QLabel:
-        """节区小标题（主色大写，下划线分隔，包豪斯风格）。"""
+        """节区小标题（次级文字色、细下划线）。"""
         lbl = QLabel(text)
         lbl.setObjectName("SectionTitle")
         return lbl

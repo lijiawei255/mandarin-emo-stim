@@ -1,7 +1,6 @@
 """核心指标进度条控件（NEGATIVE / VALENCE / AROUSAL）。
 
-浅色包豪斯风格：标题行（小号大写标签 + 大号数值）+ 横向细线进度条。
-所有指标统一使用主色（Bauhaus 蓝）填充，避免色彩冗余；通过标签文字区分含义。
+标题行（小号大写标签 + 大号数值）+ 横向进度条。配色全部来自 theme.PALETTE。
 """
 
 from __future__ import annotations
@@ -9,6 +8,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar,
                                QVBoxLayout, QWidget)
+
+from src.gui.theme import inline
 
 
 class MetricBar(QWidget):
@@ -33,8 +34,8 @@ class MetricBar(QWidget):
         self.value_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.value_label.setStyleSheet(
-            "font-size: 24px; font-weight: 700; color: #1A1A1A; "
-            "border: none; padding: 0;"
+            inline(font_size="24px", font_weight="700", color="text",
+                   border="none", padding="0")
         )
         head.addWidget(self.title_label)
         head.addStretch()
@@ -46,11 +47,7 @@ class MetricBar(QWidget):
         self.bar.setRange(0, 1000)
         self.bar.setValue(500)
         self.bar.setTextVisible(False)
-        self.bar.setFixedHeight(10)
-        self.bar.setStyleSheet(
-            "QProgressBar { border: 1px solid #D9D9D9; background: #F0F0F0; }"
-            "QProgressBar::chunk { background: #1F5FA8; }"
-        )
+        self.bar.setFixedHeight(10)  # 样式由全局 QSS（theme）统一
         layout.addWidget(self.bar)
 
     def set_value(self, value: float) -> None:

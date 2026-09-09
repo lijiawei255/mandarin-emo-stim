@@ -352,3 +352,36 @@ def test_resolve_recorder_device_parses_id(record_window):
     w.device_combo.addItem("无设备")
     w.device_combo.setCurrentIndex(1)
     assert w._resolve_recorder_device() is None
+
+
+# ====================================================================
+# 主题：调色板单一来源
+# ====================================================================
+def test_build_qss_renders_all_placeholders():
+    from src.gui.theme import PALETTE, build_qss
+    qss = build_qss()
+    assert "{{" not in qss, "存在未替换的 {{key}} 占位符"
+    assert PALETTE["accent"] in qss
+    assert PALETTE["bg"] in qss
+
+
+def test_no_hardcoded_colors_outside_theme():
+    """src/gui 下除 theme.py 外不得出现十六进制色值（换主题只改一处）。"""
+    import re
+    from pathlib import Path
+    gui_dir = Path(__file__).parent.parent / "src" / "gui"
+    offenders = []
+    for py in gui_dir.rglob("*.py"):
+        if py.name == "theme.py":
+            continue
+        for i, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"#[0-9A-Fa-f]{6}\b", line):
+                offenders.append(f"{py.relative_to(gui_dir)}:{i}: {line.strip()}")
+    assert offenders == [], "\n".join(offenders)
+
+
+def test_qss_applied_to_app(qt_app, window):
+    """应用级样式表已由 theme 渲染并应用（截图/几何检查依赖此前提）。"""
+    from src.gui.theme import PALETTE, build_qss
+    qt_app.setStyleSheet(build_qss())
+    assert PALETTE["accent"] in qt_app.styleSheet()
