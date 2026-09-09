@@ -54,36 +54,53 @@ class AnalysisPipeline:
 
         Returns:
             完整结果字典（含 negative/valence/arousal/quadrant/memberships/
-            modal_scores/asr_text/audio_quality/paralang_events/duration）。
+            modal_scores/asr_text/audio_quality/paralang_events/duration/
+            degraded_modalities）。``degraded_modalities`` 列出因异常而以
+            中性分参与融合的模态；仅「加载音频」与「融合」失败会抛异常。
         """
         stages = [
-            ("加载音频", self._step_load),
-            ("ASR 转写", self._step_asr),
-            ("声学情感", self._step_emotion),
-            ("副语言事件", self._step_panns),
-            ("韵律特征", self._step_prosody),
-            ("物理声学", self._step_physical),
-            ("文本统计", self._step_text_stat),
-            ("文本语义", self._step_text_llm),
-            ("融合", self._step_fuse),
+            ("加载音频", self._step_load, None),
+            ("ASR 转写", self._step_asr, ("text_llm", "text_stat")),
+            ("声学情感", self._step_emotion, ("acoustic",)),
+            ("副语言事件", self._step_panns, ("paralang",)),
+            ("韵律特征", self._step_prosody, ("prosody",)),
+            ("物理声学", self._step_physical, ("physical",)),
+            ("文本统计", self._step_text_stat, ("text_stat",)),
+            ("文本语义", self._step_text_llm, ("text_llm",)),
+            ("融合", self._step_fuse, None),
         ]
-        ctx: dict[str, Any] = {"audio_path": str(audio_path)}
+        ctx: dict[str, Any] = {"audio_path": str(audio_path), "degraded": []}
         n = len(stages)
-        for i, stage_def in enumerate(stages):
-            name = stage_def[0]
-            fn = stage_def[1]
+        for i, (name, fn, modalities) in enumerate(stages):
             if progress_cb:
                 progress_cb(name, int(i / n * 100))
             try:
                 fn(ctx)
             except Exception as e:  # noqa: BLE001
-                logger.error("管线步骤「%s」失败: %s", name, e)
-                # 关键步骤失败则向上抛
-                if name in ("加载音频", "ASR 转写"):
+                # 「加载音频」与「融合」失败没有可降级的余地，向上抛；
+                # 其余任一模态失败 → 记录、写入中性分、继续。
+                if modalities is None:
+                    logger.error("管线步骤「%s」失败: %s", name, e)
                     raise
+                logger.warning("管线步骤「%s」失败，该模态降级为中性分: %s", name, e)
+                self._degrade(ctx, modalities)
         if progress_cb:
             progress_cb("完成", 100)
         return self._finalize(ctx)
+
+    @staticmethod
+    def _degrade(ctx: dict, modalities: tuple[str, ...]) -> None:
+        """把指定模态置为中性分 (0.5, 0.5) 并记入降级列表。"""
+        for m in modalities:
+            ctx[f"s_{m}"] = 0.5
+            ctx[f"a_{m}"] = 0.5
+            if m not in ctx["degraded"]:
+                ctx["degraded"].append(m)
+        if "text_llm" in modalities and "asr_text" not in ctx:
+            # ASR 本身失败：无文本、置信度 0
+            ctx["asr_text"] = ""
+            ctx["asr_confidence"] = 0.0
+            ctx["asr"] = {"text": "", "confidence": 0.0, "timestamp": []}
 
     # ------------------------------------------------------------------ #
     def _step_load(self, ctx: dict) -> None:
@@ -147,7 +164,7 @@ class AnalysisPipeline:
         ctx["text_llm"] = result
         # 降级：解析失败时用 text_stat 的负面分，唤醒用 0.5
         if result["fallback"]:
-            ctx["s_text_llm"] = ctx["s_text_stat"]
+            ctx["s_text_llm"] = ctx.get("s_text_stat", 0.5)
             ctx["a_text_llm"] = 0.5
         else:
             ctx["s_text_llm"] = result["s_text_llm"]
@@ -186,6 +203,7 @@ class AnalysisPipeline:
             "audio_quality": {"snr_db": ctx.get("snr_db", 0.0)},
             "duration": ctx.get("effective_duration", ctx.get("duration", 0.0)),
             "paralang_events": ctx.get("paralang_events", []),
+            "degraded_modalities": list(ctx.get("degraded", [])),
             "modal_details": {
                 "acoustic": ctx.get("emotion", {}),
                 "prosody": ctx.get("prosody", {}),

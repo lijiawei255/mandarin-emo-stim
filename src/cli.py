@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  ASR 文本       : {result['asr_text']}")
         print(f"  音频质量 SNR   : {result['audio_quality']['snr_db']:.1f} dB")
         print(f"  有效时长       : {result['duration']:.2f} s")
+        if result.get("degraded_modalities"):
+            print(f"  [警告] 以下模态因异常降级为中性分: "
+                  f"{', '.join(result['degraded_modalities'])}", flush=True)
 
         print("\n=== 生成声刺激 ===", flush=True)
         generator = StimulusGenerator()

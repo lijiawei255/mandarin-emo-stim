@@ -579,10 +579,14 @@ class MainWindow(QMainWindow):
         # SNR 警告
         snr = result["audio_quality"]["snr_db"]
         thr = self.config["thresholds"]["snr_warning_db"]
+        warnings = []
         if snr < thr:
-            self.snr_warning.setText(f"⚠ 录音环境嘈杂（SNR {snr:.1f}dB），结果可能不准确")
-        else:
-            self.snr_warning.setText("")
+            warnings.append(f"⚠ 录音环境嘈杂（SNR {snr:.1f}dB），结果可能不准确")
+        degraded = result.get("degraded_modalities") or []
+        if degraded:
+            warnings.append("⚠ 以下模态异常，已按中性分参与融合：" + "、".join(degraded))
+        self.snr_warning.setText("
+".join(warnings))
 
         # 多模态分解
         self.modal_bars.update_scores(result["modal_scores"], axis="negative")
