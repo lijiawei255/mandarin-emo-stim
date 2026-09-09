@@ -44,7 +44,9 @@ jobs:
       - name: System libraries (Linux, for Qt offscreen + libsndfile)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # 跑者预装的第三方 apt 源（如 Google Chrome）偶发 Hash Sum mismatch，与本项目无关，先移除再更新
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list /etc/apt/sources.list.d/microsoft-edge*.list
+          sudo apt-get update || (sleep 10 && sudo apt-get update)
           sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libdbus-1-3 libsndfile1 libportaudio2 ffmpeg
       - name: PyTorch (CPU wheels)
         run: pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
