@@ -3,6 +3,12 @@
 本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+- LLM 模态 greedy 解码时显式清掉采样参数（`temperature`/`top_p`/`top_k`），消除 transformers 关于
+  `do_sample=False` 下采样参数无效的提示；输出不变。
+
 ## [0.5.0] - 2026-09-10
 
 会话模式：让使用流程符合真实受试者的数据逻辑（情绪有惯性、不会瞬间切换；干预效果要看前后测）。

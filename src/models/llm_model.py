@@ -143,15 +143,19 @@ class LLMModel:
                 messages, tokenize=False, add_generation_prompt=True,
             )
         inputs = self.tokenizer(text, return_tensors="pt").to(self.model.device)
+        if temperature > 0:
+            sampling = {"do_sample": True, "temperature": max(temperature, 0.01), "top_p": 0.9}
+        else:
+            # greedy：显式清掉采样参数（模型自带 generation_config 里有 top_k/top_p），
+            # 否则 transformers 会提示这些参数在非采样模式下无效
+            sampling = {"do_sample": False, "temperature": None, "top_p": None, "top_k": None}
         with torch.no_grad():
             out = self.model.generate(
                 **inputs,
                 max_new_tokens=int(settings.get("max_new_tokens", 16)),
-                do_sample=temperature > 0,
-                temperature=max(temperature, 0.01) if temperature > 0 else 1.0,
-                top_p=0.9,
                 repetition_penalty=1.0,
                 pad_token_id=self.tokenizer.eos_token_id,
+                **sampling,
             )
         # 仅取新生成的部分
         new_tokens = out[0][inputs["input_ids"].shape[1]:]
