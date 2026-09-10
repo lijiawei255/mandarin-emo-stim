@@ -188,6 +188,11 @@ class MainWindow(QMainWindow):
                    padding="8px 0 12px 0", border="none")
         )
         layout.addWidget(self.quadrant_label)
+        # 次级信息：模态分歧（不确定性）与校准来源，小号灰字，不挤占标题
+        self.quadrant_meta = QLabel("")
+        self.quadrant_meta.setWordWrap(True)
+        self.quadrant_meta.setStyleSheet(inline(color="text_muted", font_size="12px", border="none"))
+        layout.addWidget(self.quadrant_meta)
 
         layout.addWidget(self._h1("ASR 转写"))
         self.asr_text = QTextEdit()
@@ -540,6 +545,7 @@ class MainWindow(QMainWindow):
         for m in (self.metric_negative, self.metric_valence, self.metric_arousal):
             m.set_value(0.5)
         self.quadrant_label.setText("情绪象限：—")
+        self.quadrant_meta.setText("")
         self.btn_generate.setEnabled(False)
         for b in (self.btn_play, self.btn_pause, self.btn_stop, self.btn_save):
             b.setEnabled(False)
@@ -651,14 +657,18 @@ class MainWindow(QMainWindow):
         self.metric_arousal.set_value(result["arousal"])
         q = result["dominant_quadrant"]
         from src.fusion.quadrant import QUADRANT_NAMES
+        self.quadrant_label.setText(f"情绪象限：{q} — {QUADRANT_NAMES.get(q, '')}")
         unc = result.get("uncertainty") or {}
-        sd_txt = ""
+        meta = []
         if unc:
-            sd_txt = f"   模态分歧 ±{unc.get('negative_sd', 0):.2f} / ±{unc.get('arousal_sd', 0):.2f}"
-        src_txt = {"personal": "个人基线", "corpus": "语料校准"}.get(result.get("calibration_source"), "")
+            meta.append(f"模态分歧（加权 SD）negative ±{unc.get('negative_sd', 0):.2f} · "
+                        f"arousal ±{unc.get('arousal_sd', 0):.2f}")
+        src_txt = {"personal": "个人基线校准", "corpus": "语料级校准"}.get(result.get("calibration_source"), "")
         if src_txt:
-            sd_txt += f"  [{src_txt}]"
-        self.quadrant_label.setText(f"情绪象限：{q} — {QUADRANT_NAMES.get(q, '')}{sd_txt}")
+            meta.append(src_txt)
+        if result.get("fusion_mode") == "learned":
+            meta.append("可学习融合")
+        self.quadrant_meta.setText("  |  ".join(meta))
         self.asr_text.setPlainText(result.get("asr_text", ""))
 
         # SNR 警告

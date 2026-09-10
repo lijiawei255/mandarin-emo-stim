@@ -156,6 +156,8 @@ def populate_analyzed(win) -> None:
         "memberships": {"Q1": 0.05, "Q2": 0.80, "Q3": 0.10, "Q4": 0.05},
         "duration": 12.3, "asr_confidence": 0.9,
         "degraded_modalities": ["paralang"],       # 触发降级提示（两行警告）
+        "uncertainty": {"negative_sd": 0.21, "arousal_sd": 0.08, "n_active": 5},   # v0.3 象限标题加长
+        "calibration_source": "personal",
     })
     win.status_block.set_mode("CUDA")
     win.status_block.set_model_progress(4, 4)

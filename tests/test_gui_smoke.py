@@ -389,8 +389,9 @@ def test_uncertainty_shown_in_quadrant_label(window):
         "calibration_source": "personal",
     }
     window._on_analysis_done(result)
-    txt = window.quadrant_label.text()
-    assert "±0.21" in txt and "个人基线" in txt
+    assert "Q2" in window.quadrant_label.text()
+    meta = window.quadrant_meta.text()
+    assert "±0.21" in meta and "个人基线" in meta
 
 
 # ====================================================================
