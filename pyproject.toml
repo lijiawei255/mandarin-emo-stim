@@ -1,6 +1,6 @@
 [project]
 name = "mandarin-emo-stim"
-version = "0.5.0"
+version = "0.5.1"
 description = "Fully offline Mandarin speech emotion quantification with personalized auditory stimulus generation (research tool)."
 readme = "README.md"
 requires-python = ">=3.10,<3.11"

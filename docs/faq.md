@@ -62,6 +62,7 @@ A: 模型总计约 6GB（Qwen3 ~3.5GB、emotion2vec ~1.8GB、Paraformer ~0.9GB�
 ### Q: 显存不足（OOM）？
 
 A:
+- 显存不足或被其他进程占用导致加载失败时，程序会自动切换到 CPU 模式继续运行（界面状态栏显示 CPU），只是分析变慢；想跑在 GPU 上再按下面处理。
 - 关闭其他占用显存的程序（浏览器硬件加速、其他 GPU 应用）。
 - 把 ASR 卸到 CPU：编辑 `config/settings.json` 的 `models.asr_device` 设为 `"cpu"`。
 - 使用 emotion2vec 降级模型：`models.emotion_model` 改为 `iic/emotion2vec_plus_base`。

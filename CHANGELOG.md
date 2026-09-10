@@ -3,11 +3,16 @@
 本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.5.1] - 2026-09-10
+
+维护版本：无行为变化。
 
 ### 修复
 - LLM 模态 greedy 解码时显式清掉采样参数（`temperature`/`top_p`/`top_k`），消除 transformers 关于
   `do_sample=False` 下采样参数无效的提示；输出不变。
+
+### 文档
+- FAQ 显存不足条目补充：显存被其他进程占用时模型会自动降级到 CPU。
 
 ## [0.5.0] - 2026-09-10
 
@@ -179,6 +184,7 @@
 - 依赖修正：slab 1.8.2、panns-inference 0.1.1、transformers 4.51.3、emotion2vec v2.0.5、
   Qwen/Qwen3-1.7B、自行实现 PANNs Cnn10。
 
+[0.5.1]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.5.1
 [0.5.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.5.0
 [0.4.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.4.0
 [0.3.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.3.0
