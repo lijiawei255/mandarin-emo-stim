@@ -179,7 +179,6 @@ def score(feat: PhysicalFeatures) -> tuple[float, float, dict[str, Any]]:
     norm_loudness = clip01((feat.rms - 0.01) / 0.15)
     norm_centroid = clip01((feat.spectral_centroid - 500) / 2500)
     norm_hf = clip01(feat.hf_energy_ratio / 0.4)
-    norm_snr = clip01(feat.snr_db / 30)
     # 粗糙度重尾（AISHELL-3 中性：中位数 0.38，P90 1.03，最大 2.1），线性 /0.3 会饱和；
     # 改为对数居中：0.4 → 0.5，1.6 → 1.0，0.1 → 0.0
     norm_roughness = clip01(0.5 + 0.25 * np.log2(max(feat.roughness, 1e-6) / 0.4))
