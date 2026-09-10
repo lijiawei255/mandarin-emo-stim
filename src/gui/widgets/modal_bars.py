@@ -70,7 +70,7 @@ class ModalBars(QWidget):
         self.events_label.setStyleSheet(self._events_style(active=False))
         self.events_label.setWordWrap(True)
         layout.addWidget(self.events_label)
-        layout.addStretch()
+        layout.addSpacing(8)
 
     def update_scores(self, modal_scores: dict, axis: str = "negative") -> None:
         """更新各模态分值。

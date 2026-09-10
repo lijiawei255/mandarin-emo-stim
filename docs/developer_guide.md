@@ -70,6 +70,16 @@ src/
 菜单与输入区下拉框；CLI `--profile` / `--calibrate-user` / `--list-profiles`。
 `settings.json` 的 `fusion_calibration.personal=false` 可整体禁用。
 
+### 4.1.0f 会话模式（v0.5）
+
+`src/session/state_tracker.py`：`StateTracker.update(negative, arousal)` 做 EMA 平滑与象限滞回，
+参数来自 `settings.json` 的 `session` 段（`TrackerConfig.from_settings`）。`src/session/model.py`：
+`SessionDB`（`portable_data/sessions/sessions.db`，表 sessions / trials / analyses）、`trial_summary()`、
+`export_session_csv()` / `export_trial_summary_csv()`。GUI 侧 `SessionPanel` 只发信号，`MainWindow`
+在 `_on_analysis_done` 里调 `_session_record_analysis`，`on_generate_clicked` 在会话激活时用平滑状态
+驱动刺激，`_on_stimulus_done` 记录刺激并切到后测。`scripts/evaluate.py sequence` 用缓存离线模拟
+会话序列，改动平滑参数后可先跑它看稀定性与准确率的权衡。
+
 ### 4.1.0d ASR 后验置信度（v0.4）
 
 `src/models/asr_model.py` 在 FunASR 内部模型上包一层 `cal_decoder_with_predictor` 暂存 decoder_out，

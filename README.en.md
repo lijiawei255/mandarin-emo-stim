@@ -20,7 +20,8 @@
 
 ## Overview
 
-Mandarin-EmoStim implements a complete local closed loop: **speak → quantify emotion → generate differentiated acoustic stimulus**.
+Mandarin-EmoStim implements a local **measurement loop**: **speak → quantify emotion → differentiated acoustic stimulus → speak again (post-test)**.
+The v0.5 session mode fuses a participant's successive recordings into an inertial state estimate and chains pre-test, stimulus and post-test into trials for export, so the change around a stimulus can be observed; how stimuli are adjusted across trials is left to the experimenter, there is no automatic policy.
 
 With just a microphone, the tool:
 
@@ -151,6 +152,7 @@ annotated in **[docs/research_notes.md](./docs/research_notes.md)** (Chinese).
 Default configuration: quadrant accuracy 0.67 ± 0.08 (chance 0.25, majority 0.41), valence Spearman ρ 0.80, arousal 0.34; relative V-A ordering of 7 emotions passes 8/8 checks.
 **Calibrating on the participant's own calm reading** (storable participant profiles) cuts the across-fold SD to 0.014 and lifts valence ρ to 0.82; the optional ridge-regression fusion reaches 0.715.
 ASR confidence is now the mean Paraformer token posterior and correlates negatively with per-utterance CER (ρ ≈ −0.32). Reliability grades come from the measured accuracy of each disagreement tercile; empirically, **modality agreement does not imply reliability**.
+**Session mode** (v0.5) fuses successive recordings into an inertial state estimate: in a sequence simulation the quadrant flip rate drops from 55% to 0 with a slight gain in final accuracy; pre-test, stimulus and post-test are chained into exportable trials so the change around a stimulus can be observed.
 **Arousal discrimination remains weak**; dynamic weights rarely trigger under studio conditions.
 
 Known limits: acted emotion is exaggerated relative to natural emotion and **overestimates**

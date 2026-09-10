@@ -48,6 +48,7 @@ from src.gui.threads import AnalysisWorker, StimulusWorker
 from src.gui.widgets.loading_overlay import LoadingOverlay
 from src.gui.widgets.metric_bar import MetricBar
 from src.gui.widgets.modal_bars import ModalBars
+from src.gui.widgets.session_panel import SessionPanel
 from src.gui.widgets.status_block import StatusBlock
 from src.gui.widgets.waveform_view import WaveformView
 from src.stimulus.player import AudioPlayer
@@ -74,6 +75,14 @@ class MainWindow(QMainWindow):
         self.recorder: AudioRecorder | None = None
         self.is_recording = False
         self._calibration_mode = False   # True：本次分析用于个人基线校准而非情绪输出
+        # 会话模式（v0.5）：受试者 → 会话 → 试次（前测 / 刺激 / 后测）
+        self.session_db = None            # 延迟创建
+        self.session_id: int | None = None
+        self.trial_id: int | None = None
+        self.trial_index = 0
+        self.phase = "pre"
+        self.tracker = None               # src.session.state_tracker.StateTracker
+        self.last_smoothed: dict | None = None
         self.record_timer = QTimer(self)
         self.record_timer.timeout.connect(self._update_record_elapsed)
 
@@ -160,6 +169,7 @@ class MainWindow(QMainWindow):
         self.snr_warning.setProperty("role", "warning")  # 警告色
         self.snr_warning.setWordWrap(True)
         layout.addWidget(self.snr_warning)
+
         layout.addStretch()
 
         self.btn_record.clicked.connect(self.on_record_clicked)
@@ -235,8 +245,8 @@ class MainWindow(QMainWindow):
         # 高度按字体度量（约 3.5～4.5 行）给一个区间而非写死像素：样式表 padding
         # 在 show() 后才计入 minimumSizeHint，固定像素会在部分字体下压扁内容。
         line = self.asr_text.fontMetrics().lineSpacing()
-        self.asr_text.setMinimumHeight(int(line * 3.5) + 24)
-        self.asr_text.setMaximumHeight(int(line * 4.5) + 24)
+        self.asr_text.setMinimumHeight(int(line * 4.0) + 24)
+        self.asr_text.setMaximumHeight(int(line * 5.0) + 24)
         self.asr_text.setPlaceholderText("（转写结果将显示于此）")
         layout.addWidget(self.asr_text)
         layout.addStretch()
@@ -249,6 +259,13 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 16, 16, 16)
         self.modal_bars = ModalBars()
         layout.addWidget(self.modal_bars)
+        # 会话面板（v0.5）：放在多模态分解下方的空余区域，避免加高左栏挤压波形区
+        self.session_panel = SessionPanel()
+        self.session_panel.start_requested.connect(self.on_session_start)
+        self.session_panel.end_requested.connect(self.on_session_end)
+        self.session_panel.new_trial_requested.connect(self.on_session_new_trial)
+        self.session_panel.phase_toggle_requested.connect(self.on_session_toggle_phase)
+        layout.addWidget(self.session_panel)
         return panel
 
     # ----- 声刺激区 -----
@@ -616,6 +633,105 @@ class MainWindow(QMainWindow):
         self.status_block.set_status("已中断")
         self._reenable_input_buttons()
 
+    # ----- 会话模式（v0.5） -----
+    def _ensure_session_db(self):
+        if self.session_db is None:
+            from src.session.model import SessionDB
+            self.session_db = SessionDB()
+        return self.session_db
+
+    def _refresh_session_panel(self) -> None:
+        if self.session_id is None:
+            self.session_panel.set_inactive()
+            return
+        db = self._ensure_session_db()
+        sess = db.get_session(self.session_id) or {}
+        rows = db.analyses_of(self.trial_id) if self.trial_id else []
+        n_pre = sum(r["phase"] == "pre" for r in rows)
+        n_post = sum(r["phase"] == "post" for r in rows)
+        self.session_panel.set_active(self.session_id, sess.get("participant"), sess.get("induction_target", ""),
+                                      self.trial_index, self.phase, n_pre, n_post)
+        self.session_panel.set_smoothed(self.tracker.state() if self.tracker else None)
+
+    def on_session_start(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        from src.session.state_tracker import StateTracker, TrackerConfig
+        target, ok = QInputDialog.getText(
+            self, "开始会话", "诱发目标（实验者标注，如：焦虑 / Q2 / 中性 / 无诱发）：")
+        if not ok:
+            return
+        notes, ok = QInputDialog.getMultiLineText(self, "开始会话", "备注（可空）：", "")
+        if not ok:
+            notes = ""
+        participant = self.profile_combo.currentData()
+        db = self._ensure_session_db()
+        cfg = self.config.get("session", {})
+        self.session_id = db.create_session(participant, target.strip() or "未标注", notes,
+                                            config={k: v for k, v in cfg.items() if not k.startswith("_")})
+        self.tracker = StateTracker(TrackerConfig.from_settings(self.config))
+        self.trial_id, self.trial_index = db.new_trial(self.session_id)
+        self.phase = "pre"
+        self.last_smoothed = None
+        self._refresh_session_panel()
+        self.status_block.set_status(f"会话 #{self.session_id} 已开始（试次 1，前测）")
+
+    def on_session_new_trial(self) -> None:
+        if self.session_id is None:
+            return
+        self.trial_id, self.trial_index = self._ensure_session_db().new_trial(self.session_id)
+        self.phase = "pre"
+        # 平滑状态跨试次延续（同一受试者同一会话），不重置
+        self._refresh_session_panel()
+        self.status_block.set_status(f"试次 {self.trial_index} 开始（前测）")
+
+    def on_session_toggle_phase(self) -> None:
+        if self.session_id is None:
+            return
+        self.phase = "post" if self.phase == "pre" else "pre"
+        self._refresh_session_panel()
+
+    def on_session_end(self) -> None:
+        if self.session_id is None:
+            return
+        db = self._ensure_session_db()
+        db.end_session(self.session_id)
+        from src.session.model import SESSIONS_DIR
+        default = SESSIONS_DIR / f"session_{self.session_id:04d}_detail.csv"
+        path, _ = QFileDialog.getSaveFileName(self, "导出会话明细", str(default), "CSV (*.csv)")
+        if path:
+            try:
+                p = Path(path)
+                db.export_session_csv(self.session_id, p)
+                db.export_trial_summary_csv(self.session_id, p.with_name(p.stem.replace("_detail", "") + "_trials.csv"))
+                QMessageBox.information(self, "会话已导出",
+                                        f"逐段明细：{p}\n试次汇总：{p.with_name(p.stem.replace('_detail', '') + '_trials.csv')}")
+            except OSError as e:
+                logger.exception("会话导出失败")
+                QMessageBox.critical(self, "导出失败", f"无法导出：{e}")
+        self.session_id = None
+        self.trial_id = None
+        self.trial_index = 0
+        self.phase = "pre"
+        self.tracker = None
+        self.last_smoothed = None
+        self._refresh_session_panel()
+        self.status_block.set_status("会话已结束")
+
+    def _session_record_analysis(self, result: dict) -> None:
+        """会话激活时：更新平滑状态并把本段分析归入当前试次的当前阶段。"""
+        if self.session_id is None or self.tracker is None:
+            self.last_smoothed = None
+            return
+        self.last_smoothed = self.tracker.update(result["negative"], result["arousal"])
+        try:
+            self._ensure_session_db().add_analysis(self.trial_id, self.phase, result, self.last_smoothed,
+                                                   audio_path=getattr(self, "_pending_audio_path", None))
+        except (OSError, ValueError) as e:
+            logger.exception("会话记录写入失败")
+            self.snr_warning.setText(f"⚠ 会话记录写入失败：{e}")
+        self._refresh_session_panel()
+
     # ----- 个人基线校准 -----
     def _ask_profile_name(self) -> str | None:
         """询问受试者档案名（默认当前选中的档案）。返回 None 表示取消。"""
@@ -718,6 +834,7 @@ class MainWindow(QMainWindow):
             self._finish_calibration(result)
             return
         self.last_result = result
+        self._session_record_analysis(result)
         self.status_block.set_status("分析完成")
         self.metric_negative.set_value(result["negative"])
         self.metric_valence.set_value(result["valence"])
@@ -793,7 +910,15 @@ class MainWindow(QMainWindow):
         if self.last_result is None:
             return
         self.status_block.set_status("生成刺激中…")
-        self.stim_worker = StimulusWorker(self.last_result)
+        driving = dict(self.last_result)
+        if self.session_id is not None and self.last_smoothed and self.last_smoothed.get("n"):
+            # 会话模式：刺激由会话平滑状态驱动，而非最后一段的瞬时判定
+            driving.update({"valence": self.last_smoothed["valence"], "arousal": self.last_smoothed["arousal"],
+                            "negative": self.last_smoothed["negative"],
+                            "memberships": self.last_smoothed["memberships"],
+                            "dominant_quadrant": self.last_smoothed["quadrant"]})
+        self._stimulus_driving_state = driving
+        self.stim_worker = StimulusWorker(driving)
         self.stim_worker.finished_ok.connect(self._on_stimulus_done)
         self.stim_worker.failed.connect(self._on_stimulus_failed)
         self.stim_worker.start()
@@ -801,6 +926,22 @@ class MainWindow(QMainWindow):
     def _on_stimulus_done(self, waveform, params) -> None:
         self.last_stimulus = waveform
         self.status_block.set_status("刺激已生成")
+        if self.session_id is not None and self.trial_id is not None:
+            drv = getattr(self, "_stimulus_driving_state", {}) or {}
+            try:
+                self._ensure_session_db().record_stimulus(
+                    self.trial_id,
+                    {"f0": params.f0, "pr": params.pr, "loud_db": params.loud_db, "sc": params.sc,
+                     "harmony": params.harmony, "attack_ms": params.attack_ms,
+                     "mod_depth": params.mod_depth, "noise_ratio": params.noise_ratio},
+                    {"valence": drv.get("valence"), "arousal": drv.get("arousal"),
+                     "quadrant": drv.get("dominant_quadrant"), "smoothed": bool(self.last_smoothed)},
+                    duration_sec=self.waveform.duration)
+            except (OSError, ValueError):
+                logger.exception("会话刺激记录写入失败")
+            # 放完刺激后进入后测
+            self.phase = "post"
+            self._refresh_session_panel()
         self.waveform.set_waveform(waveform, self.player.sr)
         bpm = int(params.pr * 60)
         self.param_label.setText(

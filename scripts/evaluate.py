@@ -6,6 +6,7 @@
     python scripts/evaluate.py neutral    [--limit 200]        # AISHELL-3 → CER + 中性语音输出分布
     python scripts/evaluate.py emotion    [--per-cell 6]       # CSEMOTIONS → 象限/方向/消融
     python scripts/evaluate.py report                          # 汇总缓存结果为 Markdown 表格
+    python scripts/evaluate.py sequence                        # v0.5：会话内平滑/滞回的离线序列模拟
 
 数据来源与许可（**不随仓库分发任何音频**，运行时按需从 HuggingFace 下载到
 ``portable_data/eval/``，该目录已 gitignore）：
@@ -881,6 +882,80 @@ def _fmt(x: Any, nd: int = 3) -> str:
     return "—"
 
 
+# ---------------------------------------------------------------------- #
+# sequence（v0.5）：用同一说话人同一情绪的连续句子模拟会话
+# ---------------------------------------------------------------------- #
+def cmd_sequence(args: argparse.Namespace) -> int:
+    """在缓存的 CSEMOTIONS 留出折预测上，把每个 (说话人, 情绪) 的句子按顺序当作一次会话，
+    比较「每段独立判定」与「会话平滑 + 滞回」的准确率、翻转次数与首次正确所需段数。
+    不跑模型，只用缓存。"""
+    from src.config_loader import load_settings
+    from src.session.state_tracker import StateTracker, TrackerConfig
+
+    rows = _json_load(RESULTS_DIR / "emotion_rows.json")
+    config = load_settings()
+    # 留出折预测（默认配置），保证与正式数字同一口径
+    preds: list[dict[str, Any]] = []
+    for held in _cv_folds(rows):
+        preds += _apply(config, [r for r in rows if r["speaker"] in held])
+    seqs: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for p in preds:
+        if p["emotion"] in EMOTION_TO_QUADRANT:
+            seqs[(p["speaker"], p["emotion"])].append(p)
+    for k in seqs:
+        seqs[k].sort(key=lambda p: p["wav"])
+
+    base = TrackerConfig.from_settings(config)
+    variants = {
+        "independent": None,
+        f"ema{base.ema_alpha:g}_k{base.min_consecutive}（默认）": base,
+        "ema1.0_k1（无平滑无滞回）": TrackerConfig(1.0, base.hysteresis_band, 1, base.mid_v, base.mid_a, base.quadrant_band),
+        "ema0.5_k1（仅平滑）": TrackerConfig(0.5, base.hysteresis_band, 1, base.mid_v, base.mid_a, base.quadrant_band),
+        "ema1.0_k2（仅滞回）": TrackerConfig(1.0, base.hysteresis_band, 2, base.mid_v, base.mid_a, base.quadrant_band),
+        "ema0.3_k2（更平稳）": TrackerConfig(0.3, base.hysteresis_band, 2, base.mid_v, base.mid_a, base.quadrant_band),
+    }
+    out: dict[str, Any] = {"n_sequences": len(seqs), "seq_len": Counter(len(v) for v in seqs.values()).most_common(1)[0][0],
+                           "variants": {}}
+    for name, tc in variants.items():
+        per_pos_correct: dict[int, list[float]] = defaultdict(list)
+        final_correct, flips, first_correct_pos = [], [], []
+        for (spk, emo), seq in seqs.items():
+            ref = EMOTION_TO_QUADRANT[emo]
+            tracker = StateTracker(tc) if tc is not None else None
+            first = None
+            for i, p in enumerate(seq, 1):
+                if tracker is None:
+                    q = p["dominant_quadrant"]
+                else:
+                    q = tracker.update(p["negative"], p["arousal"])["quadrant"]
+                ok = float(q == ref)
+                per_pos_correct[i].append(ok)
+                if ok and first is None:
+                    first = i
+            final_correct.append(per_pos_correct[len(seq)][-1])
+            if tracker is not None:
+                flips.append(tracker.state()["flips"])
+            else:
+                qs = [p["dominant_quadrant"] for p in seq]
+                flips.append(sum(1 for a, b in zip(qs, qs[1:], strict=False) if a != b))
+            first_correct_pos.append(first if first is not None else len(seq) + 1)
+        out["variants"][name] = {
+            "accuracy_by_position": {str(i): float(np.mean(v)) for i, v in sorted(per_pos_correct.items())},
+            "accuracy_final": float(np.mean(final_correct)),
+            "accuracy_all_positions": float(np.mean([x for v in per_pos_correct.values() for x in v])),
+            "mean_flips_per_sequence": float(np.mean(flips)),
+            "sequences_with_any_flip": float(np.mean([f > 0 for f in flips])),
+            "median_first_correct_position": float(np.median(first_correct_pos)),
+            "never_correct_fraction": float(np.mean([p > out["seq_len"] for p in first_correct_pos])),
+        }
+    _json_dump(out, RESULTS_DIR / "sequence_summary.json")
+    for name, v in out["variants"].items():
+        _log(f"{name:28s} 末段准确率={v['accuracy_final']:.3f}  全位置={v['accuracy_all_positions']:.3f}  "
+             f"平均翻转={v['mean_flips_per_sequence']:.2f}  有翻转序列占比={v['sequences_with_any_flip']:.2f}  "
+             f"首次正确中位位置={v['median_first_correct_position']:.0f}")
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     out: list[str] = []
     if NORMS_PATH.exists():
@@ -1021,6 +1096,26 @@ def cmd_report(args: argparse.Namespace) -> int:
         if s.get("degraded_counts"):
             out.append(f"\n降级模态计数：{s['degraded_counts']}")
         out.append("")
+    p = RESULTS_DIR / "sequence_summary.json"
+    if p.exists():
+        s = _json_load(p)
+        out.append(f"### v0.5：会话内平滑 / 滞回的序列模拟（CSEMOTIONS，{s['n_sequences']} 个说话人×情绪序列，"
+                   f"每序列 {s['seq_len']} 段，留出折预测）\n")
+        out.append("| 设置 | 末段准确率 | 全位置准确率 | 每序列平均翻转 | 有翻转的序列占比 | 首次正确中位位置 | 从未正确占比 |\n"
+                   "|------|---:|---:|---:|---:|---:|---:|")
+        for name, v in s["variants"].items():
+            out.append(f"| {name} | {_fmt(v['accuracy_final'])} | {_fmt(v['accuracy_all_positions'])} | "
+                       f"{_fmt(v['mean_flips_per_sequence'], 2)} | {_fmt(v['sequences_with_any_flip'], 2)} | "
+                       f"{v['median_first_correct_position']:.0f} | {_fmt(v['never_correct_fraction'], 2)} |")
+        out.append("")
+        out.append("按位置的准确率（默认设置 vs 独立判定）：\n")
+        names = list(s["variants"])
+        default_name = next(n for n in names if "默认" in n)
+        out.append("| 位置 | 独立判定 | " + default_name + " |\n|---:|---:|---:|")
+        for i in s["variants"]["independent"]["accuracy_by_position"]:
+            out.append(f"| {i} | {_fmt(s['variants']['independent']['accuracy_by_position'][i])} | "
+                       f"{_fmt(s['variants'][default_name]['accuracy_by_position'][i])} |")
+        out.append("")
     text = "\n".join(out)
     out_path = RESULTS_DIR / "report_tables.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1043,6 +1138,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("emotion", help="CSEMOTIONS 情绪判别验证")
     p.add_argument("--per-cell", type=int, default=6, help="每（情绪×说话人）抽样句数")
     p = sub.add_parser("resummarize", help="仅在缓存上重算 emotion 汇总（不跑模型）")
+    sub.add_parser("sequence", help="v0.5：会话内平滑/滞回的离线序列模拟（用缓存，不跑模型）")
     sub.add_parser("report", help="汇总为 Markdown 表格")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
@@ -1054,6 +1150,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_neutral(args)
     if args.cmd == "emotion":
         return cmd_emotion(args)
+    if args.cmd == "sequence":
+        return cmd_sequence(args)
     if args.cmd == "resummarize":
         from src.config_loader import load_settings
         return _emotion_summarize(load_settings(), _json_load(RESULTS_DIR / "emotion_rows.json"))

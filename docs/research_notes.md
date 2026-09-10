@@ -115,7 +115,26 @@ v0.3 曾假设「分歧越大越不可靠」；v0.4 在 CSEMOTIONS 5 折留出�
 由评测把分歧度三等分并记录各档实测象限准确率，按准确率高低命名 high / medium / low；
 GUI 显示「可信度 X（该档实测准确率 y）」。等级来自表演型语料，是经验性的，不是置信区间。
 
-### 2.7 降级行为
+### 2.7 会话内状态估计与前后测协议（v0.5）[文献 + 实测]
+
+v0.1–v0.4 把每段录音当作独立快照：相邻两段之间没有任何关联，象限会因测量噪声来回翻转，
+刺激随之切换。真实情绪具有**惯性**（emotional inertia，Kuppens, Allen & Sheeber 2010：
+情绪状态在数分钟尺度上高度自相关），一分钟内不会来回跳；实验中受试者的状态由诱发任务
+缓慢带入，一次会话通常只有一到两种目标状态。v0.5 引入**会话模式**（`src/session/`）：
+
+- **状态估计**：会话内对 negative / arousal 做指数平滑（α 默认 0.5），象限判定带**滞回**：
+  平滑点须落在中线死区之外且连续 min_consecutive（默认 2）段指向同一新象限才切换。
+  **驱动刺激的是平滑状态**而非最后一段的瞬时判定。代价是承认状态变化至少滞后一到两段，
+  这是有意取舍：误报翻转（刺激切换、打断受试者）的代价高于延迟承认。
+- **前测 → 刺激 → 后测**：受试者 → 会话（实验者标注诱发目标）→ 试次；每试次前测录音若干段、
+  一次刺激、后测录音若干段，逐段结果与当时的平滑状态一起落库，导出逐段明细与试次汇总
+  （前后测均值与差值）。前后测对比是干预效果的证据；v0.4 之前放完刺激流程即结束，是**开环**，
+  README 此前的「闭环」表述已据此修正：v0.5 的闭环是**测量意义上的闭环**（能观察刺激前后
+  的变化），跨试次如何调整刺激仍由实验者决定，没有自动策略。
+- **序列模拟 [实测]**：用 CSEMOTIONS 同一说话人同一情绪的连续句子模拟会话（evaluation.md
+  §0.−1），量化了平滑与滞回对稀定性（翻转次数）与准确率的影响。
+
+### 2.8 降级行为
 
 任一模态异常（模型推理失败、标签表缺失等）时，该模态以中性分 (0.5, 0.5)
 参与融合，并在结果的 `degraded_modalities` 中列出；GUI 与 CLI 都会如实展示。
@@ -370,4 +389,5 @@ calibrate` 在 **AISHELL-3**（Apache-2.0，218 位普通话说话人的情绪�
 20. Shi, Y., et al. (2021). AISHELL-3: A multi-speaker Mandarin TTS corpus. *Interspeech 2021*.
 21. AIDC-AI (2025). CSEMOTIONS: A Mandarin emotional speech dataset. Hugging Face `AIDC-AI/CSEMOTIONS`（Apache-2.0；NOTICE 声明含 HLTSingapore ESD 衍生内容）。
 22. Schönwiesner, M., & Bialas, O. (2021). slab: An easy to learn Python package for psychoacoustic experiments. *JOSS*, 6(62), 3284.
+24. Kuppens, P., Allen, N.B., & Sheeber, L.B. (2010). Emotional inertia and psychological maladjustment. *Psychological Science*, 21(7), 984–991.
 23. Schuller, B., Batliner, A., Steidl, S., & Seppi, D. (2011). Recognising realistic emotions and affect in speech: State of the art and lessons learnt from the first challenge. *Speech Communication*, 53(9–10), 1062–1087.

@@ -400,6 +400,82 @@ def test_uncertainty_shown_in_quadrant_label(window):
 
 
 # ====================================================================
+# 会话模式（v0.5）
+# ====================================================================
+def _res(neg, ar, q):
+    return {"negative": neg, "valence": 1 - neg, "arousal": ar, "dominant_quadrant": q,
+            "modal_scores": {"acoustic": {"negative": neg, "arousal": ar}}, "asr_text": "x",
+            "audio_quality": {"snr_db": 30.0}, "paralang_events": [],
+            "memberships": {"Q1": 0, "Q2": 1, "Q3": 0, "Q4": 0}, "duration": 3.0, "asr_confidence": 0.9,
+            "uncertainty": {"negative_sd": 0.1, "arousal_sd": 0.1}}
+
+
+def test_session_flow_records_phases_and_smooths(window, tmp_path, monkeypatch):
+    from src.session import model as sm
+    from src.session.state_tracker import StateTracker, TrackerConfig
+    monkeypatch.setattr(sm, "DEFAULT_DB_PATH", tmp_path / "sessions.db")
+    monkeypatch.setattr(sm, "SESSIONS_DIR", tmp_path)
+    window.session_db = None
+    db = window._ensure_session_db()
+    window.session_id = db.create_session("S01", "焦虑")
+    window.tracker = StateTracker(TrackerConfig(ema_alpha=0.5, min_consecutive=2))
+    window.trial_id, window.trial_index = db.new_trial(window.session_id)
+    window.phase = "pre"
+    window._refresh_session_panel()
+    assert "试次 1" in window.session_panel.status.text()
+
+    window._on_analysis_done(_res(0.8, 0.8, "Q2"))
+    window._on_analysis_done(_res(0.2, 0.8, "Q1"))          # 单段相反证据：平滑后仍 Q2
+    assert window.last_smoothed["quadrant"] == "Q2"
+    assert window.last_smoothed["negative"] == pytest.approx(0.5)
+    assert "会话平滑" in window.session_panel.smoothed.text()
+    rows = db.analyses_of(window.trial_id)
+    assert [r["phase"] for r in rows] == ["pre", "pre"]
+
+    # 生成刺激：由平滑状态驱动；完成后自动进入后测（用桩 worker，避免真实合成线程）
+    import src.gui.main_window as mw
+
+    class _SigStub:
+        def connect(self, *a, **k):
+            pass
+
+    class _StubStimWorker:
+        finished_ok = _SigStub()
+        failed = _SigStub()
+
+        def __init__(self, result, duration=None, parent=None):
+            self.result = result
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(mw, "StimulusWorker", _StubStimWorker)
+    window.on_generate_clicked()
+    assert window._stimulus_driving_state["negative"] == pytest.approx(0.5)
+    from src.stimulus.strategies import StimulusParams
+    params = StimulusParams(f0=300.0, pr=1.0, loud_db=-20.0, sc=800.0, harmony="fifth_octave",
+                            attack_ms=100.0, mod_depth=0.3, noise_ratio=0.1)
+    window._on_stimulus_done(np.zeros((4410, 2), dtype=np.float32), params)
+    assert window.phase == "post"
+    window._on_analysis_done(_res(0.5, 0.5, "Q4"))
+    rows = db.analyses_of(window.trial_id)
+    assert [r["phase"] for r in rows] == ["pre", "pre", "post"]
+    summ = db.trial_summary(window.session_id)[0]
+    assert summ["n_pre"] == 2 and summ["n_post"] == 1 and summ["stimulus_harmony"] == "fifth_octave"
+
+    # 新试次：编号递增，阶段回到前测，平滑状态延续
+    window.on_session_new_trial()
+    assert window.trial_index == 2 and window.phase == "pre" and window.tracker.n == 3
+
+
+def test_no_session_means_independent_snapshots(window):
+    window.session_id = None
+    window._on_analysis_done(_res(0.8, 0.8, "Q2"))
+    assert window.last_smoothed is None
+    assert window.session_panel.smoothed.text() == ""
+
+
+# ====================================================================
 # 主题：调色板单一来源
 # ====================================================================
 def test_build_qss_renders_all_placeholders():

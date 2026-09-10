@@ -3,6 +3,33 @@
 本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-09-10
+
+会话模式：让使用流程符合真实受试者的数据逻辑（情绪有惯性、不会瞬间切换；干预效果要看前后测）。
+情绪判别方法学未变。
+
+### 新功能
+- **会话 → 试次（前测 / 刺激 / 后测）**：右栏新增会话面板，「开始会话」记录受试者档案与实验者标注的
+  诱发目标；每段录音归入当前试次的当前阶段；生成刺激后自动进入后测；「新试次」「切到前测/后测」；
+  「结束并导出」写出逐段明细与试次汇总（前后测均值与差值、刺激参数）两个 CSV。
+  数据库 `portable_data/sessions/sessions.db`（`src/session/model.py`）。
+- **会话内状态估计**：对 negative / arousal 做指数平滑（α 0.5），象限判定带滞回（死区 0.05、连续 2 段
+  一致才切换；会话开头为临时判定，锁定前随最新候选走）。**驱动刺激的是平滑状态**而非最后一段。
+  参数在 `settings.json` 的 `session` 段（`src/session/state_tracker.py`）。
+- 不开会话时行为与 v0.4 相同（每段独立判定）。
+
+### 评测
+- `scripts/evaluate.py sequence`：用 CSEMOTIONS 同说话人同情绪的 6 句序列离线模拟会话。默认设置下
+  象限翻转率 55% → 0%，末段准确率 0.735 → 0.755，全位置准确率不变；「从未正确」序列 6% → 14%
+  （若不做临时起始判定则为 31%）。详见 `docs/evaluation.md` §0.−1。
+
+### 文档
+- README 的「闭环」改为「测量闭环」：v0.5 能观察刺激前后的变化，但跨试次如何调整刺激由实验者决定，
+  没有自动策略；research_notes 新增 §2.7（情绪惯性、前后测协议）；用户手册新增会话流程。
+
+### 界面
+- 会话面板放在多模态分解下方的空余区域；波形区设最小高度，避免小屏下被上方面板挤压。
+
 ## [0.4.0] - 2026-09-10
 
 补上 0.3.0 报告列为待办的两项（ASR 真实置信度、不确定性校准），并把个人基线改为可预存的受试者档案。
@@ -146,6 +173,7 @@
 - 依赖修正：slab 1.8.2、panns-inference 0.1.1、transformers 4.51.3、emotion2vec v2.0.5、
   Qwen/Qwen3-1.7B、自行实现 PANNs Cnn10。
 
+[0.5.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.5.0
 [0.4.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.4.0
 [0.3.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.2.0

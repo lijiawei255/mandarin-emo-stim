@@ -1,0 +1,102 @@
+{
+  "n_sequences": 49,
+  "seq_len": 6,
+  "variants": {
+    "independent": {
+      "accuracy_by_position": {
+        "1": 0.6530612244897959,
+        "2": 0.6326530612244898,
+        "3": 0.6938775510204082,
+        "4": 0.6326530612244898,
+        "5": 0.673469387755102,
+        "6": 0.7346938775510204
+      },
+      "accuracy_final": 0.7346938775510204,
+      "accuracy_all_positions": 0.6700680272108843,
+      "mean_flips_per_sequence": 1.1020408163265305,
+      "sequences_with_any_flip": 0.5510204081632653,
+      "median_first_correct_position": 1.0,
+      "never_correct_fraction": 0.061224489795918366
+    },
+    "ema0.5_k2（默认）": {
+      "accuracy_by_position": {
+        "1": 0.6530612244897959,
+        "2": 0.6122448979591837,
+        "3": 0.6530612244897959,
+        "4": 0.673469387755102,
+        "5": 0.6938775510204082,
+        "6": 0.7551020408163265
+      },
+      "accuracy_final": 0.7551020408163265,
+      "accuracy_all_positions": 0.673469387755102,
+      "mean_flips_per_sequence": 0.0,
+      "sequences_with_any_flip": 0.0,
+      "median_first_correct_position": 1.0,
+      "never_correct_fraction": 0.14285714285714285
+    },
+    "ema1.0_k1（无平滑无滞回）": {
+      "accuracy_by_position": {
+        "1": 0.6530612244897959,
+        "2": 0.6326530612244898,
+        "3": 0.6938775510204082,
+        "4": 0.6530612244897959,
+        "5": 0.7142857142857143,
+        "6": 0.7142857142857143
+      },
+      "accuracy_final": 0.7142857142857143,
+      "accuracy_all_positions": 0.6768707482993197,
+      "mean_flips_per_sequence": 0.16326530612244897,
+      "sequences_with_any_flip": 0.16326530612244897,
+      "median_first_correct_position": 1.0,
+      "never_correct_fraction": 0.14285714285714285
+    },
+    "ema0.5_k1（仅平滑）": {
+      "accuracy_by_position": {
+        "1": 0.6530612244897959,
+        "2": 0.6326530612244898,
+        "3": 0.673469387755102,
+        "4": 0.6938775510204082,
+        "5": 0.6938775510204082,
+        "6": 0.7346938775510204
+      },
+      "accuracy_final": 0.7346938775510204,
+      "accuracy_all_positions": 0.6802721088435374,
+      "mean_flips_per_sequence": 0.04081632653061224,
+      "sequences_with_any_flip": 0.04081632653061224,
+      "median_first_correct_position": 1.0,
+      "never_correct_fraction": 0.20408163265306123
+    },
+    "ema1.0_k2（仅滞回）": {
+      "accuracy_by_position": {
+        "1": 0.6530612244897959,
+        "2": 0.6326530612244898,
+        "3": 0.6938775510204082,
+        "4": 0.6122448979591837,
+        "5": 0.6530612244897959,
+        "6": 0.7346938775510204
+      },
+      "accuracy_final": 0.7346938775510204,
+      "accuracy_all_positions": 0.6632653061224489,
+      "mean_flips_per_sequence": 0.0,
+      "sequences_with_any_flip": 0.0,
+      "median_first_correct_position": 1.0,
+      "never_correct_fraction": 0.061224489795918366
+    },
+    "ema0.3_k2（更平稳）": {
+      "accuracy_by_position": {
+        "1": 0.6530612244897959,
+        "2": 0.6326530612244898,
+        "3": 0.673469387755102,
+        "4": 0.6938775510204082,
+        "5": 0.6938775510204082,
+        "6": 0.7142857142857143
+      },
+      "accuracy_final": 0.7142857142857143,
+      "accuracy_all_positions": 0.6768707482993197,
+      "mean_flips_per_sequence": 0.0,
+      "sequences_with_any_flip": 0.0,
+      "median_first_correct_position": 1.0,
+      "never_correct_fraction": 0.1836734693877551
+    }
+  }
+}

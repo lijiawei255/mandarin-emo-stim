@@ -71,5 +71,11 @@
     "personal_path": null
   },
   "fusion_mode": "weighted",
-  "learned_fusion_path": "config/learned_fusion.json"
+  "learned_fusion_path": "config/learned_fusion.json",
+  "session": {
+    "ema_alpha": 0.5,
+    "hysteresis_band": 0.05,
+    "min_consecutive": 2,
+    "_note": "会话内状态估计：EMA 平滑系数、象限切换死区、切换所需连续段数（见 research_notes §2.8）"
+  }
 }

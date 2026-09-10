@@ -30,6 +30,7 @@ class WaveformView(QWidget):
         pg.setConfigOption("background", color("card"))
         pg.setConfigOption("foreground", color("text"))
         self.plot = pg.PlotWidget()
+        self.plot.setMinimumHeight(150)   # 波形区不可被上方面板挤成一条（1280×720 下曾发生）
         self.plot.setMouseEnabled(False, False)
         self.plot.hideButtons()
         self.plot.getAxis("bottom").setPen(color("border_strong"))
