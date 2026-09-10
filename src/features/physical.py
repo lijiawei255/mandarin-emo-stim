@@ -18,10 +18,13 @@
     （dB）。高唤醒语音的能量起伏更大（Banse & Scherer 1996 报告愤怒/恐惧的强度
     变异升高），是对「平均响度」的补充线索。
 
-【聚合】（v0.3）负面分 = 粗糙度（唯一与情绪有文献关联的物理线索；v0.2 消融显示
-含 SNR/高频极端度的负面分与效价参照序**负相关** ρV=-0.13，即反向噪声，已移除）；
-唤醒分 = 0.30·响度 + 0.20·质心 + 0.15·高频比 + 0.15·粗糙度 + 0.20·动态范围。
-SNR 仍提取，仅用于音频质量评估与动态权重。
+【聚合】（v0.3）**本模态不提供效价信息，负面分恒为 0.5**：v0.2 消融显示含 SNR /
+高频极端度的负面分与效价参照序负相关（ρV = −0.13）；v0.3 实测粗糙度在 CSEMOTIONS 上
+随**唤醒**升高（angry 0.66 > happy 0.56 > sad 0.50 > neutral 0.42，中位数），与效价无关，
+Sethares 的不协和模型描述的是音的粗糙感知，并不支持「语音粗糙 → 负面」。
+唤醒分 = 0.30·响度 + 0.20·质心 + 0.15·高频比 + 0.15·粗糙度 + 0.20·动态范围；
+粗糙度按 AISHELL-3 中性中位数 0.38 做对数居中（0.4 → 0.5，1.6 → 1.0）；动态范围
+以 8 dB 为中心（AISHELL-3 中性中位数 8.8 dB）。SNR 仍提取，仅用于质量评估与动态权重。
 """
 
 from __future__ import annotations
@@ -177,12 +180,14 @@ def score(feat: PhysicalFeatures) -> tuple[float, float, dict[str, Any]]:
     norm_centroid = clip01((feat.spectral_centroid - 500) / 2500)
     norm_hf = clip01(feat.hf_energy_ratio / 0.4)
     norm_snr = clip01(feat.snr_db / 30)
-    norm_roughness = clip01(feat.roughness / 0.3)
-    norm_dyn = clip01((feat.rms_dynamic_range_db - 4.0) / 12.0)   # 4 dB → 0，16 dB → 1
+    # 粗糙度重尾（AISHELL-3 中性：中位数 0.38，P90 1.03，最大 2.1），线性 /0.3 会饱和；
+    # 改为对数居中：0.4 → 0.5，1.6 → 1.0，0.1 → 0.0
+    norm_roughness = clip01(0.5 + 0.25 * np.log2(max(feat.roughness, 1e-6) / 0.4))
+    norm_dyn = clip01((feat.rms_dynamic_range_db - 2.0) / 12.0)   # 2 dB → 0，8 dB → 0.5，14 dB → 1
 
-    # v0.3：负面分只保留粗糙度（v0.2 的 SNR / 高频极端度项在消融中与效价负相关，属反向噪声）；
-    # 唤醒分加入能量动态范围。绝对偏置由融合层的中性校准处理。
-    s_physical = norm_roughness
+    # v0.3：物理声学不提供效价信息（见模块 docstring），负面分恒为中性 0.5；
+    # 唤醒分加入能量动态范围。
+    s_physical = 0.5
     a_physical = (0.30 * norm_loudness + 0.20 * norm_centroid + 0.15 * norm_hf
                   + 0.15 * norm_roughness + 0.20 * norm_dyn)
 

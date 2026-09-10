@@ -72,13 +72,15 @@ def test_beating_dyad_is_rougher_than_pure_tone():
     assert physical.extract(dyad, SR).roughness > physical.extract(pure, SR).roughness
 
 
-def test_roughness_raises_physical_negativity():
+def test_roughness_raises_physical_arousal():
+    """v0.3：粗糙度进入唤醒分（实测其随唤醒升高而非效价），负面分恒 0.5。"""
     t = np.linspace(0, 1.5, int(SR * 1.5), endpoint=False)
     pure = 0.2 * np.sin(2 * np.pi * 440 * t)
     dyad = 0.1 * np.sin(2 * np.pi * 440 * t) + 0.1 * np.sin(2 * np.pi * 510 * t)
-    s_pure, _, _ = physical.score(physical.extract(pure, SR))
-    s_dyad, _, _ = physical.score(physical.extract(dyad, SR))
-    assert s_dyad > s_pure
+    s_pure, a_pure, _ = physical.score(physical.extract(pure, SR))
+    s_dyad, a_dyad, _ = physical.score(physical.extract(dyad, SR))
+    assert s_pure == pytest.approx(0.5) and s_dyad == pytest.approx(0.5)
+    assert a_dyad > a_pure
 
 
 def test_dynamic_range_raises_physical_arousal():
@@ -86,21 +88,23 @@ def test_dynamic_range_raises_physical_arousal():
     t = np.linspace(0, 2.0, int(SR * 2.0), endpoint=False)
     steady = 0.2 * np.sin(2 * np.pi * 220 * t)
     bursty = steady * (0.15 + 0.85 * (np.sin(2 * np.pi * 3 * t) > 0))
+    bursty *= np.sqrt(np.mean(steady ** 2) / np.mean(bursty ** 2))   # 等均方能量，只比起伏
     f_s, f_b = physical.extract(steady, SR), physical.extract(bursty, SR)
     assert f_b.rms_dynamic_range_db > f_s.rms_dynamic_range_db + 3
     assert physical.score(f_b)[1] > physical.score(f_s)[1]
 
 
-def test_physical_negative_is_roughness_only():
-    """v0.3：物理声学负面分只由粗糙度决定（SNR/高频项已移除）。"""
+def test_physical_negative_is_neutral_and_roughness_drives_arousal():
+    """v0.3：物理声学不提供效价信息（负面分恒 0.5）；粗糙度进入唤醒分且对数居中。"""
     base = dict(rms=0.05, spectral_centroid=1500.0, hf_energy_ratio=0.1, snr_db=5.0)
-    lo = physical.PhysicalFeatures(roughness=0.0, **base)
-    hi = physical.PhysicalFeatures(roughness=0.3, **base)
-    assert physical.score(lo)[0] == pytest.approx(0.0)
-    assert physical.score(hi)[0] > physical.score(lo)[0]
-    noisy = physical.PhysicalFeatures(roughness=0.0, rms=0.05, spectral_centroid=1500.0,
-                                      hf_energy_ratio=0.6, snr_db=0.0)
-    assert physical.score(noisy)[0] == pytest.approx(0.0)   # SNR/高频不再进入负面分
+    lo = physical.PhysicalFeatures(roughness=0.1, **base)
+    mid = physical.PhysicalFeatures(roughness=0.4, **base)
+    hi = physical.PhysicalFeatures(roughness=1.6, **base)
+    for f in (lo, mid, hi):
+        assert physical.score(f)[0] == pytest.approx(0.5)
+    assert physical.score(lo)[1] < physical.score(mid)[1] < physical.score(hi)[1]
+    # 重尾输入不饱和：1.6 与 3.0 仍可区分为同一上限，0.4 位于中点
+    assert physical.score(hi)[1] == physical.score(physical.PhysicalFeatures(roughness=3.0, **base))[1]
 
 
 # ---------------- 象限 ----------------
