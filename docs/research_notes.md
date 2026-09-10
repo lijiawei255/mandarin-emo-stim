@@ -70,11 +70,13 @@
 
 每次调整后重新归一化，确保权重和恒为 1。
 
-**须知的薄弱环节**：规则 2 依赖的「ASR 置信度」**不是模型输出的后验概率**，
-而是由转写文本长度与重复率估计的**代理指标**（`ASRModel._estimate_confidence`）。
-FunASR 1.0.25 的 `Paraformer.inference` 内部计算了 token 级 `am_scores` 但不在
-返回结果中暴露，故无法低成本获得真实置信度。该代理指标只能捕捉「转写为空/
-极短/大量重复」这类粗粒度失败，对语义级错误无感知。
+**ASR 置信度的来源（v0.4 起为真实后验）**：FunASR 1.0.25 的 `Paraformer.inference`
+内部用 `cal_decoder_with_predictor` 得到每个预测位置的 log-softmax（`am_scores`）但不
+返回。`ASRModel` 在模型实例上包一层该方法暂存 `decoder_out`，置信度 = 保留 token 的
+最大后验概率均值（结果中 `asr_confidence_source="posterior"`）。干净语音上该值通常
+> 0.9，`asr_confidence_threshold` 相应改为 0.85（低于它文本权重按比例衰减）。
+无钩子（其他 ASR 后端、测试桩）时回退到 v0.1–v0.3 的文本长度/重复率代理指标
+（`"proxy"`）。后验均值与逐句 CER 的关系见 evaluation.md §0.0。
 
 ### 2.4 中性校准（基线归一化）[实测]（v0.2）
 
@@ -86,11 +88,13 @@ Q3。v0.2 起融合前对每个模态加常数偏移 offset = 0.5 − 中性均�
 它只平移均值，不改变各模态内部的相对排序。可在 `settings.json` 的 `fusion_calibration.enabled`
 关闭；结果同时返回校准前后的模态分（`modal_scores_raw` / `modal_scores`）。
 
-**个人基线（v0.3）[实测]**：语料级偏移只消除模型对「一般中文语音」的偏置，个人嗓音
-（F0、气声、语速习惯）会让各模态在**个人**中性状态下再次偏离 0.5。用户录一段平静朗读
-（默认 30 s）得到个人偏移（`src/fusion/personal_calibration.py`，保存在
-`portable_data/calibration/user_baseline.json`），融合时替代语料偏移。evaluation.md §0
-用 CSEMOTIONS 每位配音员的中性句模拟了这一做法（说话人级基线）。
+**个人基线（v0.3）与受试者档案（v0.4）[实测]**：语料级偏移只消除模型对「一般中文语音」
+的偏置，个人嗓音（F0、气声、语速习惯）会让各模态在**个人**中性状态下再次偏离 0.5。
+受试者录一段平静朗读（默认 30 s）得到个人偏移，融合时替代语料偏移。evaluation.md §0.1
+用 CSEMOTIONS 每位配音员的中性句模拟了这一做法（说话人级基线：折间标准差 0.076 → 0.014）。
+v0.4 起基线按**受试者档案**保存（`portable_data/calibration/profiles/<name>.json`，多次录音
+取平均，`active_profile.json` 记录当前选用），因为受试者来做实验时往往已不平静，基线应在
+另一个平静场合预录、实验当天选用。
 
 ### 2.5 可学习融合（v0.3，默认不启用）[实测]
 
@@ -100,11 +104,16 @@ Russell 环上的参照坐标（连续标签的粗略替代），因此只能保
 CSEMOTIONS（表演型）交叉验证与全量拟合得到，迁移到自然语音未验证；设 `settings.json`
 的 `fusion_mode="learned"` 启用。
 
-### 2.6 不确定性（v0.3）
+### 2.6 不确定性与可信度等级（v0.3 / v0.4）[实测]
 
 融合结果附带活跃模态（未降级）校准后分数的加权标准差 `uncertainty.{negative_sd, arousal_sd}`。
-六个模态分歧越大，绝对判断越不可靠；GUI 在象限标题后显示「模态分歧 ±」。这不是统计意义的
-置信区间，只是分歧度的直观量。
+v0.3 曾假设「分歧越大越不可靠」；v0.4 在 CSEMOTIONS 5 折留出预测上实测**方向相反**：
+分歧度与判对**正相关**（evaluation.md §0.0）——「六个模态都接近 0.5」也算一致，但那是
+没有证据而非有把握；分歧大通常意味着至少有强模态给出了远离中性的信号。
+
+因此可信度等级（`src/fusion/reliability.py`）**不假设方向**：`config/uncertainty_thresholds.json`
+由评测把分歧度三等分并记录各档实测象限准确率，按准确率高低命名 high / medium / low；
+GUI 显示「可信度 X（该档实测准确率 y）」。等级来自表演型语料，是经验性的，不是置信区间。
 
 ### 2.7 降级行为
 

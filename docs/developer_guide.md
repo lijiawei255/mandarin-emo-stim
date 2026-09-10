@@ -61,12 +61,27 @@ src/
 的 `fusion_calibration.enabled=false` 可关闭；分析结果同时含 `modal_scores_raw`（校准前）与
 `modal_scores`（校准后）。
 
-### 4.1.0b 个人基线（v0.3）
+### 4.1.0b 受试者档案 / 个人基线（v0.4）
 
-`portable_data/calibration/user_baseline.json` 由 GUI「文件 → 个人基线校准」或
-`python -m src.cli --audio calm.wav --calibrate-user` 生成（`src/fusion/personal_calibration.py`），
-融合时替代语料偏移；`settings.json` 的 `fusion_calibration.personal=false` 可禁用。删除文件或
-`--clear-user-calibration` 即回到语料级校准。
+`src/fusion/personal_calibration.py`：`save_profile(name, raw_list)` 把录音的原始模态分并入
+`portable_data/calibration/profiles/<name>.json`（多次取平均并重算偏移），`set_active(name)` 写
+`active_profile.json`，融合层通过 `load_active()` 取当前档案偏移覆盖语料偏移（结果的
+`calibration_profile` 记录档案名）。v0.3 的单文件 `user_baseline.json` 仍兼容。GUI 入口在「文件」
+菜单与输入区下拉框；CLI `--profile` / `--calibrate-user` / `--list-profiles`。
+`settings.json` 的 `fusion_calibration.personal=false` 可整体禁用。
+
+### 4.1.0d ASR 后验置信度（v0.4）
+
+`src/models/asr_model.py` 在 FunASR 内部模型上包一层 `cal_decoder_with_predictor` 暂存 decoder_out，
+`transcribe()` 返回 `confidence`（保留 token 的最大后验均值）、`confidence_source`（posterior / proxy）
+与 `token_confidences`。换 ASR 后端时若无此方法会自动回退代理指标；`asr_confidence_threshold` 的
+量纲随来源不同（后验 0.85，代理 0.5）。
+
+### 4.1.0e 可信度阈值（v0.4）
+
+`config/uncertainty_thresholds.json` 由 `scripts/evaluate.py emotion` 在留出折预测上生成（分歧度
+三分位 + 各档实测准确率 + 按准确率排序的等级名），`src/fusion/reliability.grade()` 据此给出等级。
+改动模态或融合后重跑 `emotion` 即更新。
 
 ### 4.1.0c 可学习融合（v0.3，可选）
 
