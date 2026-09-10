@@ -1,0 +1,142 @@
+{
+  "_meta": {
+    "n_train": 414,
+    "l2": 1.0,
+    "targets": {
+      "angry": [
+        0.85,
+        0.85
+      ],
+      "fearful": [
+        0.8,
+        0.8
+      ],
+      "sad": [
+        0.8,
+        0.25
+      ],
+      "neutral": [
+        0.5,
+        0.45
+      ],
+      "happy": [
+        0.15,
+        0.75
+      ],
+      "playfulness": [
+        0.25,
+        0.7
+      ],
+      "surprise": [
+        0.5,
+        0.85
+      ]
+    },
+    "source": "CSEMOTIONS full sample (acted emotions, studio)",
+    "cv": {
+      "folds": [
+        {
+          "accuracy": 0.7592592592592593,
+          "rhoA": 0.37087704478296885,
+          "rhoV": 0.8268176319473526,
+          "pairwise_pass": 8,
+          "n": 54
+        },
+        {
+          "accuracy": 0.7166666666666667,
+          "rhoA": 0.27152282728147625,
+          "rhoV": 0.7614888313984259,
+          "pairwise_pass": 8,
+          "n": 60
+        },
+        {
+          "accuracy": 0.6833333333333333,
+          "rhoA": 0.43348381197569014,
+          "rhoV": 0.8104854318101209,
+          "pairwise_pass": 8,
+          "n": 60
+        },
+        {
+          "accuracy": 0.7333333333333333,
+          "rhoA": 0.32460247772747913,
+          "rhoV": 0.6954795225104479,
+          "pairwise_pass": 8,
+          "n": 60
+        },
+        {
+          "accuracy": 0.6833333333333333,
+          "rhoA": 0.30146519419973433,
+          "rhoV": 0.7118117226476797,
+          "pairwise_pass": 8,
+          "n": 60
+        }
+      ],
+      "accuracy": {
+        "mean": 0.7151851851851851,
+        "sd": 0.032799218766834635
+      },
+      "rhoA": {
+        "mean": 0.34039027119346976,
+        "sd": 0.06344878165050312
+      },
+      "rhoV": {
+        "mean": 0.7612166280628054,
+        "sd": 0.05808010105338812
+      },
+      "pairwise_pass": {
+        "mean": 8.0,
+        "sd": 0.0
+      }
+    },
+    "generated": "2026-09-10",
+    "script": "scripts/evaluate.py emotion"
+  },
+  "features": [
+    "acoustic.negative",
+    "acoustic.arousal",
+    "prosody.negative",
+    "prosody.arousal",
+    "paralang.negative",
+    "paralang.arousal",
+    "physical.negative",
+    "physical.arousal",
+    "text_llm.negative",
+    "text_llm.arousal",
+    "text_stat.negative",
+    "text_stat.arousal"
+  ],
+  "coefficients": {
+    "negative": {
+      "acoustic.negative": 0.5062,
+      "acoustic.arousal": -0.16376,
+      "prosody.negative": 0.10728,
+      "prosody.arousal": -0.15574,
+      "paralang.negative": 0.0,
+      "paralang.arousal": 0.0,
+      "physical.negative": 0.0,
+      "physical.arousal": 0.03962,
+      "text_llm.negative": 0.72953,
+      "text_llm.arousal": -0.16379,
+      "text_stat.negative": 0.1317,
+      "text_stat.arousal": 0.08385
+    },
+    "arousal": {
+      "acoustic.negative": 0.00013,
+      "acoustic.arousal": 0.38913,
+      "prosody.negative": -0.01621,
+      "prosody.arousal": 0.3295,
+      "paralang.negative": 0.0,
+      "paralang.arousal": 0.0,
+      "physical.negative": 0.0,
+      "physical.arousal": 0.05799,
+      "text_llm.negative": -0.00586,
+      "text_llm.arousal": 0.21341,
+      "text_stat.negative": -0.08607,
+      "text_stat.arousal": -3e-05
+    }
+  },
+  "intercept": {
+    "negative": -0.05455,
+    "arousal": 0.09129
+  }
+}

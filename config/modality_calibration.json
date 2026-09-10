@@ -20,8 +20,8 @@
       "arousal": 0.5
     },
     "physical": {
-      "negative": 0.6347508193649348,
-      "arousal": 0.3418960853460902
+      "negative": 0.5,
+      "arousal": 0.3345361880764864
     },
     "text_llm": {
       "negative": 0.52046783625731,
@@ -46,8 +46,8 @@
       "arousal": 0.0
     },
     "physical": {
-      "negative": -0.1348,
-      "arousal": 0.1581
+      "negative": 0.0,
+      "arousal": 0.1655
     },
     "text_llm": {
       "negative": -0.0205,

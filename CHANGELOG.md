@@ -3,6 +3,36 @@
 本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-09-10
+
+不依赖新数据的方法学与可用性改进；评测协议升级为性别均衡的 5 折说话人交叉验证（`docs/evaluation.md` §0.1）。
+
+### 新功能
+- **个人基线校准**：GUI「文件 → 个人基线校准（录 30 秒平静朗读）/ 从音频文件设置 / 清除」，CLI
+  `--calibrate-user` / `--clear-user-calibration`。个人偏移替代语料偏移（`src/fusion/personal_calibration.py`，
+  `portable_data/calibration/user_baseline.json`）。交叉验证中「说话人级中性基线」是折间最稳的配置
+  （0.680 ± 0.014，效价 ρ 0.82）。
+- **可学习融合（可选）**：岭回归把 12 维原始模态分映射到 (negative, arousal)，系数可读
+  （`config/learned_fusion.json`，`src/fusion/learned_fusion.py`）；`settings.json` 设 `fusion_mode="learned"` 启用，
+  文件缺失回退手工权重。交叉验证 0.715 ± 0.033（效价 ρ 0.76）。默认不启用：训练数据为表演型语料。
+- **不确定性输出**：融合结果附带活跃模态的加权标准差 `uncertainty`，GUI 象限标题下显示「模态分歧」与校准来源，
+  CLI 同步打印。
+
+### 方法学
+- **物理声学不再提供效价信息**：实测粗糙度随唤醒升高（angry 0.66 > happy 0.56 > sad 0.50 > neutral 0.42）
+  而与效价无关，负面分恒 0.5；粗糙度按 AISHELL-3 中性中位数对数居中后进入唤醒分。
+- **唤醒加入能量动态范围**（帧 RMS P95 − 中位数）；在 CSEMOTIONS 上各情绪几乎无差异，未带来改善。
+- 降级模态不施加校准偏移（v0.2 补丁并入）。
+
+### 评测
+- 性别均衡 5 折说话人 CV：校准关 / 默认 / 训练折选权重 / 岭回归 / 说话人级基线；`neutral` 改为先写偏移再
+  离线重算输出，避免旧偏移污染中性分布。
+- 结果：默认配置 0.670 ± 0.076（v0.2 单次 test 0.63）；语料级校准在物理模态修正后已无净收益
+  （0.674 关 vs 0.670 开）；唤醒度 ρ 0.34 仍未改善。
+
+### 仓库
+- `.pre-commit-config.yaml`（ruff --fix、大文件拦截）；`docs/evaluation/` 归档 v0.1 / v0.2 汇总。
+
 ## [0.2.0] - 2026-09-10
 
 针对 0.1.0 验证报告的不利结论做的方法学修订，全部评测重跑；情绪语料按说话人划分 dev / test，
@@ -94,5 +124,6 @@
 - 依赖修正：slab 1.8.2、panns-inference 0.1.1、transformers 4.51.3、emotion2vec v2.0.5、
   Qwen/Qwen3-1.7B、自行实现 PANNs Cnn10。
 
+[0.3.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.2.0
 [0.1.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.1.0

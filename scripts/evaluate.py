@@ -455,6 +455,28 @@ def cmd_neutral(args: argparse.Namespace) -> int:
     hyps = [_strip_punct(r["asr_text"]) for r in rows]
     # 字级 CER：把每个字当作一个 token
     cer = jiwer.cer([" ".join(x) for x in refs], [" ".join(x) for x in hyps]) if any(refs) else float("nan")
+
+    # 先由原始分算出**本次**的校准偏移并写盘，再用它离线重算融合输出，
+    # 避免管线运行时加载的旧偏移污染「中性语音输出分布」（v0.3 修正）
+    raw_means = {m: {ax: _mean_std(r.get("modal_scores_raw", r["modal_scores"])[m][ax] for r in rows)[0]
+                     for ax in ("negative", "arousal")}
+                 for m in rows[0]["modal_scores"]} if rows else {}
+    offsets = {m: {ax: round(max(-OFFSET_CLIP, min(OFFSET_CLIP, 0.5 - v[ax])), 4)
+                   for ax in ("negative", "arousal")} for m, v in raw_means.items()}
+    if not args.no_write_calibration:
+        _json_dump({
+            "_meta": {
+                "source": "AISHELL-3 test subset (emotion-neutral read speech), raw modality means",
+                "definition": f"offset = 0.5 - mean_raw, clipped to ±{OFFSET_CLIP:.1f}; applied additively in WeightedFusion",
+                "n": len(rows), "generated": date.today().isoformat(),
+                "script": "scripts/evaluate.py neutral",
+            },
+            "modal_means_raw": raw_means,
+            "offsets": offsets,
+        }, CALIB_PATH)
+        _log(f"中性校准偏移已写入 {CALIB_PATH}: {offsets}")
+    from src.config_loader import load_settings
+    rows = _apply(load_settings(), rows)   # 用当前（刚写入的）偏移重算 negative/arousal/象限
     summary = {
         "n": len(rows),
         "cer": cer,
@@ -469,26 +491,9 @@ def cmd_neutral(args: argparse.Namespace) -> int:
                         for m in rows[0]["modal_scores"]} if rows else {},
         "degraded_counts": dict(Counter(m for r in rows for m in r["degraded_modalities"])),
     }
-    # 各模态原始均值 → 中性校准偏移（v0.2）
-    raw_means = {m: {ax: _mean_std(r.get("modal_scores_raw", r["modal_scores"])[m][ax] for r in rows)[0]
-                     for ax in ("negative", "arousal")}
-                 for m in rows[0]["modal_scores"]} if rows else {}
     summary["modal_means_raw"] = raw_means
-    offsets = {m: {ax: round(max(-OFFSET_CLIP, min(OFFSET_CLIP, 0.5 - v[ax])), 4)
-                   for ax in ("negative", "arousal")} for m, v in raw_means.items()}
+    summary["offsets"] = offsets
     _json_dump(summary, RESULTS_DIR / "neutral_summary.json")
-    if not args.no_write_calibration:
-        _json_dump({
-            "_meta": {
-                "source": "AISHELL-3 test subset (emotion-neutral read speech), raw modality means",
-                "definition": f"offset = 0.5 - mean_raw, clipped to ±{OFFSET_CLIP:.1f}; applied additively in WeightedFusion",
-                "n": len(rows), "generated": date.today().isoformat(),
-                "script": "scripts/evaluate.py neutral",
-            },
-            "modal_means_raw": raw_means,
-            "offsets": offsets,
-        }, CALIB_PATH)
-        _log(f"中性校准偏移已写入 {CALIB_PATH}: {offsets}")
     _log(f"CER={cer:.3f}  negative μ={summary['negative'][0]:.3f}  "
          f"arousal μ={summary['arousal'][0]:.3f}  象限分布={summary['quadrant_hist']}")
     return 0
@@ -585,7 +590,8 @@ def _apply(config: dict, rows: list[dict[str, Any]], **kw) -> list[dict[str, Any
     for r in rows:
         f = _refuse(config, r, **kw)
         out.append({**r, "valence": f["valence"], "arousal": f["arousal"],
-                    "negative": f["negative"], "dominant_quadrant": f["dominant_quadrant"]})
+                    "negative": f["negative"], "dominant_quadrant": f["dominant_quadrant"],
+                    "modal_scores": f["modal_scores"]})
     return out
 
 
