@@ -77,8 +77,8 @@ class ModelManager:
             except InterruptedError:
                 logger.info("模型加载被用户中断（已完成 %d/%d）", i, n)
                 raise
-            except (RuntimeError, MemoryError, OSError) as e:
-                # OOM / CUDA 错误：尝试降级到 CPU 一次后重试该模型
+            except (RuntimeError, MemoryError, OSError, ValueError) as e:
+                # OOM / CUDA 错误 / bitsandbytes 显存不足：尝试降级到 CPU 一次后重试该模型
                 if self.device == "cuda" and self._is_oom_like(e):
                     logger.warning("加载 %s 时显存不足(%s)，尝试降级到 CPU…", name, e)
                     self._switch_device_to_cpu()
@@ -95,9 +95,15 @@ class ModelManager:
 
     @staticmethod
     def _is_oom_like(exc: Exception) -> bool:
-        """判断异常是否为显存/内存不足类（可降级 CPU 重试）。"""
+        """判断异常是否为显存/内存不足类（可降级 CPU 重试）。
+
+        除 CUDA OOM 外，还识别 bitsandbytes 4-bit 加载在显存被其他进程占用时抛出的
+        ValueError（"Some modules are dispatched on the CPU or the disk ... enough GPU RAM"）：
+        它不是 OOM 异常，但本质同样是显存不足，应降级而不是让程序加载失败。
+        """
         msg = str(exc).lower()
         return ("out of memory" in msg or "cuda" in msg and "memory" in msg
+                or "enough gpu ram" in msg or "dispatched on the cpu" in msg
                 or isinstance(exc, MemoryError))
 
     def _switch_device_to_cpu(self) -> None:

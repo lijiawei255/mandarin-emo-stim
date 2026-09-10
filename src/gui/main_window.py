@@ -412,7 +412,7 @@ class MainWindow(QMainWindow):
             self._load_idx += 1
             # 用 singleShot 让事件循环喘息，再加载下一个
             QTimer.singleShot(10, self._load_next_model)
-        except (RuntimeError, MemoryError, OSError) as e:
+        except (RuntimeError, MemoryError, OSError, ValueError) as e:
             if self._pending_manager.device == "cuda" and self._pending_manager._is_oom_like(e):
                 logger.warning("加载 %s 显存不足(%s)，降级 CPU…", name, e)
                 self._pending_manager._switch_device_to_cpu()

@@ -79,11 +79,13 @@ class LLMModel:
                 trust_remote_code=True,
             )
         else:
-            # 纯 CPU 模式：FP16 推理（bitsandbytes 不可用）
-            logger.info("bitsandbytes 不可用或 CPU 模式，使用 FP16 加载")
+            # 无 bitsandbytes / 非 CUDA：CPU 上用 float32（PyTorch CPU 的 fp16 矩阵乘不支持或极慢），
+            # 其他设备用 fp16
+            dtype = torch.float32 if not self.device.startswith("cuda") else torch.float16
+            logger.info("bitsandbytes 不可用或非 CUDA 设备，使用 %s 加载", dtype)
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                torch_dtype=torch.float16,
+                torch_dtype=dtype,
                 trust_remote_code=True,
             ).to(self.device)
 

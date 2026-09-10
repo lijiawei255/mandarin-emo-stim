@@ -61,6 +61,10 @@ def test_is_oom_like_detects_cuda_oom():
     from src.models.model_manager import ModelManager
     assert ModelManager._is_oom_like(RuntimeError("CUDA out of memory.")) is True
     assert ModelManager._is_oom_like(MemoryError()) is True
+    # bitsandbytes 4-bit 在显存被其他进程占用时抛的 ValueError（v0.5 实测触发）
+    assert ModelManager._is_oom_like(ValueError(
+        "Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM "
+        "to fit the quantized model.")) is True
     # 非内存错误不误判
     assert ModelManager._is_oom_like(ValueError("bad value")) is False
     assert ModelManager._is_oom_like(FileNotFoundError("x")) is False
