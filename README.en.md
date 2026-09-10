@@ -12,6 +12,7 @@
 [![Python 3.10](https://img.shields.io/badge/python-3.10-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-31014/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20NVIDIA%20CUDA%2012.1-lightgrey)](#hardware-requirements-current-release-windows--nvidia-gpu)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22687225.svg)](https://doi.org/10.5281/zenodo.22687225)
 [![Cite](https://img.shields.io/badge/cite-CITATION.cff-green)](./CITATION.cff)
 
 </div>

@@ -7,6 +7,11 @@ authors:
     given-names: "Jiawei"
 version: 0.5.1
 date-released: 2026-09-10
+doi: 10.5281/zenodo.22687225
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22687225
+    description: "Concept DOI (resolves to the latest archived release on Zenodo)"
 license: Apache-2.0
 repository-code: "https://github.com/lijiawei255/mandarin-emo-stim"
 url: "https://github.com/lijiawei255/mandarin-emo-stim"
