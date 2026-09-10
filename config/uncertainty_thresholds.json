@@ -1,0 +1,44 @@
+{
+  "_meta": {
+    "source": "CSEMOTIONS 5-fold speaker CV held-out predictions, default config",
+    "generated": "2026-09-10",
+    "script": "scripts/evaluate.py emotion",
+    "n": 294,
+    "definition": "score = max(negative_sd, arousal_sd) of active modalities; terciles on held-out CV predictions; grade assigned by empirical accuracy rank (not by assumed direction)",
+    "spearman_score_vs_correct": 0.35121798190717607
+  },
+  "score": "max(negative_sd, arousal_sd)",
+  "cuts": [
+    0.1484,
+    0.1863
+  ],
+  "terciles": {
+    "t0": {
+      "n": 98,
+      "accuracy": 0.47959183673469385,
+      "score_range": [
+        0.07218365118073714,
+        0.1475361857732196
+      ],
+      "grade": "low"
+    },
+    "t1": {
+      "n": 98,
+      "accuracy": 0.6836734693877551,
+      "score_range": [
+        0.14879880209454255,
+        0.18614575357002894
+      ],
+      "grade": "medium"
+    },
+    "t2": {
+      "n": 98,
+      "accuracy": 0.8469387755102041,
+      "score_range": [
+        0.1865614387109108,
+        0.29399271264521404
+      ],
+      "grade": "high"
+    }
+  }
+}

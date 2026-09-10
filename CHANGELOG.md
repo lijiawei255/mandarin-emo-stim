@@ -3,6 +3,28 @@
 本项目版本变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-09-10
+
+补上 0.3.0 报告列为待办的两项（ASR 真实置信度、不确定性校准），并把个人基线改为可预存的受试者档案。
+情绪判别方法学未变，交叉验证数字与 0.3.0 一致（`docs/evaluation.md` §0.0）。
+
+### 新功能
+- **受试者档案**：个人基线按受试者保存（`portable_data/calibration/profiles/<name>.json`），同一档案多次
+  录音取平均；输入区新增「受试者档案」下拉框，菜单改为「为受试者录制基线 / 从文件添加 / 删除档案」，
+  CLI `--profile` / `--calibrate-user` / `--list-profiles`。基线可在受试者平静时预录、实验当天选用。
+  历史记录新增校准来源、档案名与不确定性字段（旧库幂等增列）。
+- **ASR token 后验置信度**：在 FunASR Paraformer 内部方法上包一层暂存 decoder 输出，置信度取保留 token 的
+  最大后验均值（`confidence_source=posterior`，无钩子时回退代理指标）。与逐句 CER 的 Spearman ρ ≈ −0.32
+  （代理指标仅 +0.03）；`asr_confidence_threshold` 改为 0.85。
+- **可信度等级**：`config/uncertainty_thresholds.json` 由交叉验证留出预测生成（分歧度三分位的实测象限
+  准确率），GUI 与 CLI 显示「可信度 X（该档实测准确率 y）」。**实测方向与直觉相反**：分歧度与判对正相关
+  （ρ +0.35，最一致档 0.48 vs 最分歧档 0.85），因为「都接近中性」也算一致但只是证据弱；等级因此按实测
+  准确率排序命名，不假设方向。
+
+### 评测
+- `neutral` / `emotion` 报告后验置信度分布及其与 CER 的相关；`emotion` 写出可信度阈值文件；
+  `docs/evaluation/` 归档 v0.3 汇总。
+
 ## [0.3.0] - 2026-09-10
 
 不依赖新数据的方法学与可用性改进；评测协议升级为性别均衡的 5 折说话人交叉验证（`docs/evaluation.md` §0.1）。
@@ -124,6 +146,7 @@
 - 依赖修正：slab 1.8.2、panns-inference 0.1.1、transformers 4.51.3、emotion2vec v2.0.5、
   Qwen/Qwen3-1.7B、自行实现 PANNs Cnn10。
 
+[0.4.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.4.0
 [0.3.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.2.0
 [0.1.0]: https://github.com/lijiawei255/mandarin-emo-stim/releases/tag/v0.1.0
