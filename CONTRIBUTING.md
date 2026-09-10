@@ -16,7 +16,7 @@ pip install -r requirements.txt
 ## 提交规范
 
 1. 从 `main` 拉取最新代码，新建分支开发：`git checkout -b feat/your-feature`。
-2. 代码需通过 `ruff check .`、`pytest` 与（涉及 GUI 时）`pytest -m slow`。
+2. 代码需通过 `ruff check .`、`pytest` 与（涉及 GUI 时）`pytest -m slow`；建议 `pre-commit install` 让提交前自动检查。
 3. 提交信息建议带前缀：`feat:` / `fix:` / `docs:` / `test:` / `refactor:`。
 4. 开启 PR，描述改动内容与动机。
 

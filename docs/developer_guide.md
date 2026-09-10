@@ -61,6 +61,19 @@ src/
 的 `fusion_calibration.enabled=false` 可关闭；分析结果同时含 `modal_scores_raw`（校准前）与
 `modal_scores`（校准后）。
 
+### 4.1.0b 个人基线（v0.3）
+
+`portable_data/calibration/user_baseline.json` 由 GUI「文件 → 个人基线校准」或
+`python -m src.cli --audio calm.wav --calibrate-user` 生成（`src/fusion/personal_calibration.py`），
+融合时替代语料偏移；`settings.json` 的 `fusion_calibration.personal=false` 可禁用。删除文件或
+`--clear-user-calibration` 即回到语料级校准。
+
+### 4.1.0c 可学习融合（v0.3，可选）
+
+`config/learned_fusion.json` 由 `scripts/evaluate.py emotion` 用全部 CSEMOTIONS 样本拟合（岭回归，
+`src/fusion/learned_fusion.py`），`settings.json` 设 `fusion_mode="learned"` 启用；文件缺失自动回退
+手工权重。改动任一模态打分公式后需重跑 `emotion` 重新拟合。
+
 ### 4.1.1 韵律基准值
 
 `config/prosody_norms.json` 由 `scripts/evaluate.py calibrate` 在 AISHELL-3 上实测生成（含 mixed / female /
@@ -103,6 +116,7 @@ _DictLoader.reload()  # 改完词表后重载
 ## 5. 测试与静态检查
 
 ```bash
+pre-commit install              # 可选：提交前自动 ruff --fix / 大文件拦截（.pre-commit-config.yaml）
 ruff check .                    # 静态检查（CI 第一道门）
 pytest                          # 单元 + 科学行为回归（默认跳过 GPU/slow）
 pytest -m slow                  # GUI 冒烟 + 布局几何检查（offscreen 可跑）
@@ -115,6 +129,7 @@ pytest -m gpu                   # 模型加载与端到端（需 GPU + 已下载
 | `tests/test_pipeline_degradation.py` | 任一模态失败时降级为中性分并列入 `degraded_modalities`，不崩溃 |
 | `tests/test_gui_layout.py` | 3 分辨率 × 3 状态下无重叠/挤压/溢出/压扁（`scripts/ui_geometry_check.py`） |
 | `tests/test_robustness.py` | 配置校验、OOM 判定、checkpoint 校验、SIGINT 定时器、PANNs 标签降级、LLM greedy、并发写库 |
+| `tests/test_calibration_learned.py` | 个人基线偏移计算/保存/覆盖语料偏移；岭回归拟合与回退；不确定性随模态分歧变化 |
 
 测试夹具音频：`tests/fixtures/mandarin_sample.wav`（Wikimedia Commons，Public Domain）。
 
