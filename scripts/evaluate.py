@@ -919,7 +919,7 @@ def cmd_sequence(args: argparse.Namespace) -> int:
     for name, tc in variants.items():
         per_pos_correct: dict[int, list[float]] = defaultdict(list)
         final_correct, flips, first_correct_pos = [], [], []
-        for (spk, emo), seq in seqs.items():
+        for (_spk, emo), seq in seqs.items():
             ref = EMOTION_TO_QUADRANT[emo]
             tracker = StateTracker(tc) if tc is not None else None
             first = None
