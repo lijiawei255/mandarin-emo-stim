@@ -30,14 +30,26 @@ def _progress(stage: str, pct: int) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Mandarin-EmoStim 无头分析")
-    parser.add_argument("--audio", required=True, help="待分析的音频文件路径")
+    parser.add_argument("--audio", required=False, default=None, help="待分析的音频文件路径")
     parser.add_argument("--out", default=None, help="生成的刺激 WAV 输出路径")
     parser.add_argument("--duration", type=float, default=None,
                         help="刺激时长（秒），默认取配置")
     parser.add_argument("--json", default=None, help="把完整结果写入该 JSON 文件")
+    parser.add_argument("--calibrate-user", action="store_true",
+                        help="把 --audio 当作用户的平静朗读样本，计算并保存个人基线（不生成刺激）")
+    parser.add_argument("--clear-user-calibration", action="store_true", help="删除已保存的个人基线")
     args = parser.parse_args(argv)
 
+    if args.clear_user_calibration:
+        from src.fusion import personal_calibration
+        print("已删除个人基线" if personal_calibration.clear() else "没有个人基线可删除", flush=True)
+        if not args.calibrate_user and args.audio in (None, ""):
+            return 0
+
     # 先做廉价的输入校验，再加载耗时的模型（也避免测试环境无模型时触发下载）
+    if args.audio is None:
+        print("\n[错误] 需要 --audio", flush=True)
+        return 2
     audio_path = Path(args.audio)
     if not audio_path.exists():
         print(f"\n[错误] 文件不存在：{audio_path}", flush=True)
@@ -56,6 +68,17 @@ def main(argv: list[str] | None = None) -> int:
         pipeline = AnalysisPipeline(manager)
         result = pipeline.analyze(args.audio, progress_cb=_progress)
 
+        if args.calibrate_user:
+            from src.fusion import personal_calibration
+            offsets = personal_calibration.compute_offsets([result["modal_scores_raw"]])
+            path = personal_calibration.save(offsets, meta={"source": str(audio_path),
+                                                            "duration_sec": result["duration"]})
+            print(f"\n=== 个人基线已保存: {path} ===", flush=True)
+            for m, v in offsets.items():
+                print(f"  {m:10s} negative {v['negative']:+.3f}  arousal {v['arousal']:+.3f}", flush=True)
+            manager.unload_all()
+            return 0
+
         print("\n=== 量化指标 ===", flush=True)
         print(f"  Negative Score : {result['negative']:.3f}")
         print(f"  Valence        : {result['valence']:.3f}")
@@ -64,6 +87,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  ASR 文本       : {result['asr_text']}")
         print(f"  音频质量 SNR   : {result['audio_quality']['snr_db']:.1f} dB")
         print(f"  有效时长       : {result['duration']:.2f} s")
+        unc = result.get("uncertainty") or {}
+        if unc:
+            print(f"  模态分歧(SD)   : negative {unc.get('negative_sd', 0):.3f}  "
+                  f"arousal {unc.get('arousal_sd', 0):.3f}  [{result.get('calibration_source', 'none')} 校准, "
+                  f"{result.get('fusion_mode', 'weighted')} 融合]")
         if result.get("degraded_modalities"):
             print(f"  [警告] 以下模态因异常降级为中性分: "
                   f"{', '.join(result['degraded_modalities'])}", flush=True)

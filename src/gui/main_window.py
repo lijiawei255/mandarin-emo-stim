@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
         # 录音状态
         self.recorder: AudioRecorder | None = None
         self.is_recording = False
+        self._calibration_mode = False   # True：本次分析用于个人基线校准而非情绪输出
         self.record_timer = QTimer(self)
         self.record_timer.timeout.connect(self._update_record_elapsed)
 
@@ -181,6 +182,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.metric_arousal)
 
         self.quadrant_label = QLabel("情绪象限：—")
+        self.quadrant_label.setWordWrap(True)
         self.quadrant_label.setStyleSheet(
             inline(font_size="18px", font_weight="700", color="accent_text",
                    padding="8px 0 12px 0", border="none")
@@ -273,6 +275,17 @@ class MainWindow(QMainWindow):
         act_quit = QAction("退出", self)
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_export)
+        file_menu.addSeparator()
+        act_calib = QAction("个人基线校准（录 30 秒平静朗读）", self)
+        act_calib.triggered.connect(self.on_calibrate_user)
+        act_calib_file = QAction("从音频文件设置个人基线…", self)
+        act_calib_file.triggered.connect(self.on_calibrate_user_from_file)
+        act_calib_clear = QAction("清除个人基线", self)
+        act_calib_clear.triggered.connect(self.on_clear_user_calibration)
+        file_menu.addAction(act_calib)
+        file_menu.addAction(act_calib_file)
+        file_menu.addAction(act_calib_clear)
+        file_menu.addSeparator()
         file_menu.addAction(act_quit)
 
         help_menu = menubar.addMenu("帮助")
@@ -489,6 +502,8 @@ class MainWindow(QMainWindow):
             return
         elapsed = self.recorder.elapsed()
         max_dur = float(self.config["audio"]["record_duration_max"])
+        if self._calibration_mode:
+            max_dur = float(self.config["audio"].get("calibration_duration_sec", 30))
         self.record_elapsed_label.setText(f"已录制：{elapsed:.1f} 秒（上限 {max_dur:.0f}s）")
         if elapsed >= max_dur:
             logger.info("达到录音时长上限 %.0fs，自动停止", max_dur)
@@ -556,10 +571,79 @@ class MainWindow(QMainWindow):
         self.btn_upload.setEnabled(True)
 
     def _on_analysis_interrupted(self) -> None:
+        self._calibration_mode = False
         self.status_block.set_status("已中断")
         self._reenable_input_buttons()
 
+    # ----- 个人基线校准 -----
+    def on_calibrate_user(self) -> None:
+        """录制一段平静朗读并据此保存个人基线。"""
+        if self.manager is None:
+            QMessageBox.warning(self, "未就绪", "模型尚未加载完成，请稍候。")
+            return
+        dur = int(self.config["audio"].get("calibration_duration_sec", 30))
+        ok = QMessageBox.question(
+            self, "个人基线校准",
+            f"请用平静、日常的语气朗读任意一段文字约 {dur} 秒（到时自动停止）。\n"
+            "录制环境与麦克风请与实际使用时一致。\n\n准备好后点击「Yes」开始录音。",
+        )
+        if ok != QMessageBox.StandardButton.Yes:
+            return
+        self._calibration_mode = True
+        self.btn_record.setChecked(True)
+        self._start_recording()
+        if not self.is_recording:
+            self._calibration_mode = False
+
+    def on_calibrate_user_from_file(self) -> None:
+        if self.manager is None:
+            QMessageBox.warning(self, "未就绪", "模型尚未加载完成，请稍候。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择平静朗读的音频文件", "", "音频文件 (*.wav *.mp3 *.flac *.ogg *.m4a)")
+        if path:
+            self._calibration_mode = True
+            self._start_analysis(path, source="calibration")
+
+    def on_clear_user_calibration(self) -> None:
+        from src.fusion import personal_calibration
+        if personal_calibration.clear():
+            QMessageBox.information(self, "个人基线", "已删除个人基线，后续分析使用语料级校准。")
+        else:
+            QMessageBox.information(self, "个人基线", "当前没有个人基线。")
+        self.status_block.set_status("就绪")
+
+    def _finish_calibration(self, result: dict) -> None:
+        """把一次分析结果转为个人基线并保存。"""
+        from src.fusion import personal_calibration
+        self._calibration_mode = False
+        raw = result.get("modal_scores_raw") or result.get("modal_scores") or {}
+        offsets = personal_calibration.compute_offsets([raw])
+        if not offsets:
+            QMessageBox.warning(self, "个人基线", "未得到有效的模态分数，校准未保存。")
+            self.status_block.set_status("就绪")
+            return
+        try:
+            path = personal_calibration.save(
+                offsets, meta={"source": getattr(self, "_pending_audio_path", ""),
+                               "duration_sec": result.get("duration")})
+        except OSError as e:
+            logger.exception("个人基线保存失败")
+            QMessageBox.critical(self, "保存失败", f"无法保存个人基线：{e}")
+            self.status_block.set_status("就绪")
+            return
+        lines = [f"{m}: negative {v['negative']:+.2f}, arousal {v['arousal']:+.2f}"
+                 for m, v in offsets.items()]
+        QMessageBox.information(
+            self, "个人基线已保存",
+            f"已保存到 {path}\n\n后续分析将用你的中性基线替代语料级校准：\n" + "\n".join(lines))
+        self.status_block.set_status("个人基线已保存")
+        self._reenable_input_buttons()
+
     def _on_analysis_done(self, result: dict) -> None:
+        if self._calibration_mode:
+            self._finish_calibration(result)
+            return
         self.last_result = result
         self.status_block.set_status("分析完成")
         self.metric_negative.set_value(result["negative"])
@@ -567,7 +651,14 @@ class MainWindow(QMainWindow):
         self.metric_arousal.set_value(result["arousal"])
         q = result["dominant_quadrant"]
         from src.fusion.quadrant import QUADRANT_NAMES
-        self.quadrant_label.setText(f"情绪象限：{q} — {QUADRANT_NAMES.get(q, '')}")
+        unc = result.get("uncertainty") or {}
+        sd_txt = ""
+        if unc:
+            sd_txt = f"   模态分歧 ±{unc.get('negative_sd', 0):.2f} / ±{unc.get('arousal_sd', 0):.2f}"
+        src_txt = {"personal": "个人基线", "corpus": "语料校准"}.get(result.get("calibration_source"), "")
+        if src_txt:
+            sd_txt += f"  [{src_txt}]"
+        self.quadrant_label.setText(f"情绪象限：{q} — {QUADRANT_NAMES.get(q, '')}{sd_txt}")
         self.asr_text.setPlainText(result.get("asr_text", ""))
 
         # SNR 警告
@@ -611,6 +702,7 @@ class MainWindow(QMainWindow):
             self.snr_warning.setText(f"⚠ 历史记录保存失败：{e}")
 
     def _on_analysis_failed(self, msg: str) -> None:
+        self._calibration_mode = False
         self.status_block.set_status("分析失败")
         self._reenable_input_buttons()
         QMessageBox.critical(self, "分析失败", msg)

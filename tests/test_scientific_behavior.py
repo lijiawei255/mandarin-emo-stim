@@ -81,6 +81,28 @@ def test_roughness_raises_physical_negativity():
     assert s_dyad > s_pure
 
 
+def test_dynamic_range_raises_physical_arousal():
+    """v0.3：能量起伏更大（AM 调制的音）→ 物理声学唤醒更高。"""
+    t = np.linspace(0, 2.0, int(SR * 2.0), endpoint=False)
+    steady = 0.2 * np.sin(2 * np.pi * 220 * t)
+    bursty = steady * (0.15 + 0.85 * (np.sin(2 * np.pi * 3 * t) > 0))
+    f_s, f_b = physical.extract(steady, SR), physical.extract(bursty, SR)
+    assert f_b.rms_dynamic_range_db > f_s.rms_dynamic_range_db + 3
+    assert physical.score(f_b)[1] > physical.score(f_s)[1]
+
+
+def test_physical_negative_is_roughness_only():
+    """v0.3：物理声学负面分只由粗糙度决定（SNR/高频项已移除）。"""
+    base = dict(rms=0.05, spectral_centroid=1500.0, hf_energy_ratio=0.1, snr_db=5.0)
+    lo = physical.PhysicalFeatures(roughness=0.0, **base)
+    hi = physical.PhysicalFeatures(roughness=0.3, **base)
+    assert physical.score(lo)[0] == pytest.approx(0.0)
+    assert physical.score(hi)[0] > physical.score(lo)[0]
+    noisy = physical.PhysicalFeatures(roughness=0.0, rms=0.05, spectral_centroid=1500.0,
+                                      hf_energy_ratio=0.6, snr_db=0.0)
+    assert physical.score(noisy)[0] == pytest.approx(0.0)   # SNR/高频不再进入负面分
+
+
 # ---------------- 象限 ----------------
 @pytest.mark.parametrize("v,a,expected", [
     (0.9, 0.9, "Q1"), (0.1, 0.9, "Q2"), (0.1, 0.1, "Q3"), (0.9, 0.1, "Q4"),

@@ -26,7 +26,8 @@
     "stimulus_channels": 2,
     "stimulus_duration_sec": 30,
     "stimulus_min_sec": 10,
-    "stimulus_max_sec": 120
+    "stimulus_max_sec": 120,
+    "calibration_duration_sec": 30
   },
   "models": {
     "device": "auto",
@@ -64,6 +65,10 @@
   },
   "fusion_calibration": {
     "enabled": true,
-    "path": "config/modality_calibration.json"
-  }
+    "path": "config/modality_calibration.json",
+    "personal": true,
+    "personal_path": null
+  },
+  "fusion_mode": "weighted",
+  "learned_fusion_path": "config/learned_fusion.json"
 }

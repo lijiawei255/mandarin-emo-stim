@@ -31,6 +31,17 @@
 校准集上实测），这是情感计算中常规的「基线归一化」。可在 settings.json 的
 ``fusion_calibration.enabled`` 关闭；结果同时返回校准前后的模态分。
 
+【个人基线】（v0.3）``fusion_calibration.personal=true`` 且存在
+``portable_data/calibration/user_baseline.json`` 时，个人偏移替代语料偏移
+（见 src/fusion/personal_calibration.py）。
+
+【可学习融合】（v0.3）``fusion_mode="learned"`` 时用 ``config/learned_fusion.json``
+的岭回归系数计算 negative/arousal（见 src/fusion/learned_fusion.py）；文件缺失
+回退手工权重。
+
+【不确定性】（v0.3）返回各活跃模态（未降级）校准后分数的加权标准差
+``uncertainty.{negative_sd, arousal_sd}``：模态分歧越大，结论越不可靠。
+
 【输出】加权求和得 Negative/Arousal，Valence = 1 - Negative（负向效价度量），
 再由 quadrant.py 做软象限判定。
 """
@@ -69,7 +80,18 @@ class WeightedFusion:
         self.mid_v = thr["quadrant_mid_v"]
         self.mid_a = thr["quadrant_mid_a"]
         self.band = thr["quadrant_band"]
-        self.offsets: dict[str, tuple[float, float]] = load_modality_calibration(config)
+        self.offsets, self.calibration_source = load_all_calibration(config)
+        self.fusion_mode = "weighted"
+        self.learned = None
+        if str(config.get("fusion_mode", "weighted")).lower() == "learned":
+            from src import portable
+            from src.fusion.learned_fusion import LearnedFusion
+            lp = Path(config.get("learned_fusion_path") or (portable.CONFIG_DIR / "learned_fusion.json"))
+            if not lp.is_absolute():
+                lp = portable.PROJECT_ROOT / lp
+            self.learned = LearnedFusion.load(lp)
+            if self.learned is not None:
+                self.fusion_mode = "learned"
 
     # ------------------------------------------------------------------ #
     # 动态权重调整
@@ -193,9 +215,18 @@ class WeightedFusion:
             modal_scores_raw[m] = {"negative": s0, "arousal": a0}
             modal_scores[m] = {"negative": s, "arousal": a}
 
+        if self.fusion_mode == "learned" and self.learned is not None:
+            # 学习到的线性映射作用于**原始**模态分：截距项已吸收语料偏置，
+            # 与训练时（scripts/evaluate.py 在原始分上拟合）保持一致
+            negative, arousal = self.learned.predict(modal_scores_raw)
+
         negative = max(0.0, min(1.0, negative))
         valence = 1.0 - negative
         arousal = max(0.0, min(1.0, arousal))
+
+        # 不确定性：活跃模态（未降级）校准后分数的加权标准差
+        active = [m for m in MODALITIES if m not in skip_calibration]
+        uncertainty = _weighted_sd(modal_scores, w_s, w_a, active)
 
         memberships = compute_quadrant_memberships(
             valence, arousal, self.mid_v, self.mid_a, self.band
@@ -210,7 +241,42 @@ class WeightedFusion:
             "modal_scores": modal_scores,
             "modal_scores_raw": modal_scores_raw,
             "weights": {"negative": w_s, "arousal": w_a},
+            "uncertainty": uncertainty,
+            "fusion_mode": self.fusion_mode,
+            "calibration_source": self.calibration_source,
         }
+
+
+def _weighted_sd(modal_scores: dict[str, dict[str, float]], w_s: dict[str, float],
+                 w_a: dict[str, float], active: list[str]) -> dict[str, float]:
+    """活跃模态分数的加权标准差（权重按活跃模态重新归一）。"""
+    out = {"negative_sd": 0.0, "arousal_sd": 0.0, "n_active": len(active)}
+    if len(active) < 2:
+        return out
+    for ax, w in (("negative", w_s), ("arousal", w_a)):
+        ws = [w[m] for m in active]
+        tot = sum(ws) or 1.0
+        ws = [x / tot for x in ws]
+        xs = [modal_scores[m][ax] for m in active]
+        mean = sum(wi * xi for wi, xi in zip(ws, xs, strict=False))
+        var = sum(wi * (xi - mean) ** 2 for wi, xi in zip(ws, xs, strict=False))
+        out[f"{ax}_sd"] = float(var ** 0.5)
+    return out
+
+
+def load_all_calibration(config: dict[str, Any]) -> tuple[dict[str, tuple[float, float]], str]:
+    """语料偏移 + 个人偏移（个人覆盖语料）。返回 (offsets, 来源: none/corpus/personal)。"""
+    offsets = load_modality_calibration(config)
+    source = "corpus" if offsets else "none"
+    fc = config.get("fusion_calibration", {}) or {}
+    if fc.get("enabled", True) and fc.get("personal", True):
+        from src.fusion import personal_calibration
+        pp = fc.get("personal_path")
+        personal = personal_calibration.load(Path(pp) if pp else None)
+        if personal:
+            offsets = {**offsets, **personal}
+            source = "personal"
+    return offsets, source
 
 
 def load_modality_calibration(config: dict[str, Any]) -> dict[str, tuple[float, float]]:

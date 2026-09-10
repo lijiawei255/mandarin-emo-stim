@@ -14,8 +14,14 @@
   - 频谱粗糙度 roughness：基于 Sethares (1993) 与 Plomp-Levelt 模型——相邻频率
     分量在 20-150Hz 拍频内会产生「粗糙」的不协和感（人耳对 ~70Hz 拍频最敏感）。
     粗糙度高→声音紧张刺耳→负面。本实现取频谱显著峰对，按拍频的高斯权重加权求和。
+  - 能量动态范围 rms_dynamic_range_db（v0.3）：帧 RMS 的第 95 百分位与中位数之差
+    （dB）。高唤醒语音的能量起伏更大（Banse & Scherer 1996 报告愤怒/恐惧的强度
+    变异升高），是对「平均响度」的补充线索。
 
-按项目计划文档 3.2 节（4）聚合成 (s_physical, a_physical)。
+【聚合】（v0.3）负面分 = 粗糙度（唯一与情绪有文献关联的物理线索；v0.2 消融显示
+含 SNR/高频极端度的负面分与效价参照序**负相关** ρV=-0.13，即反向噪声，已移除）；
+唤醒分 = 0.30·响度 + 0.20·质心 + 0.15·高频比 + 0.15·粗糙度 + 0.20·动态范围。
+SNR 仍提取，仅用于音频质量评估与动态权重。
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ class PhysicalFeatures:
     hf_energy_ratio: float     # 高频(>2kHz)能量比
     snr_db: float              # 信噪比 dB
     roughness: float           # 频谱粗糙度
+    rms_dynamic_range_db: float = 0.0   # 帧 RMS 动态范围（P95 − 中位数，dB）
 
 
 def _estimate_snr(y: np.ndarray, sr: int) -> float:
@@ -128,11 +135,13 @@ def extract(y: np.ndarray, sr: int) -> PhysicalFeatures:
         :class:`PhysicalFeatures`。
     """
     if len(y) == 0:
-        return PhysicalFeatures(0.0, 0.0, 0.0, 0.0, 0.0)
+        return PhysicalFeatures(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     y = np.asarray(y, dtype=np.float64)
 
-    rms = float(np.mean(librosa.feature.rms(y=y)))
+    rms_frames = librosa.feature.rms(y=y)[0]
+    rms = float(np.mean(rms_frames))
+    dyn_range = _dynamic_range_db(rms_frames)
     sc = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)))
 
     # 高频能量比（>2kHz）
@@ -147,8 +156,19 @@ def extract(y: np.ndarray, sr: int) -> PhysicalFeatures:
 
     return PhysicalFeatures(
         rms=rms, spectral_centroid=sc, hf_energy_ratio=hf_ratio,
-        snr_db=snr_db, roughness=roughness,
+        snr_db=snr_db, roughness=roughness, rms_dynamic_range_db=dyn_range,
     )
+
+
+def _dynamic_range_db(rms_frames: np.ndarray, floor: float = 1e-5) -> float:
+    """帧 RMS 动态范围：P95 − 中位数（dB）。只统计高于地板的帧，避免静音拉大范围。"""
+    r = np.asarray(rms_frames, dtype=np.float64)
+    r = r[r > floor]
+    if len(r) < 4:
+        return 0.0
+    hi = 20 * np.log10(np.percentile(r, 95))
+    mid = 20 * np.log10(np.median(r))
+    return float(max(0.0, hi - mid))
 
 
 def score(feat: PhysicalFeatures) -> tuple[float, float, dict[str, Any]]:
@@ -158,17 +178,18 @@ def score(feat: PhysicalFeatures) -> tuple[float, float, dict[str, Any]]:
     norm_hf = clip01(feat.hf_energy_ratio / 0.4)
     norm_snr = clip01(feat.snr_db / 30)
     norm_roughness = clip01(feat.roughness / 0.3)
-    norm_hf_extreme = abs(norm_hf - 0.5) * 2  # 过多/过少高频都增负面
+    norm_dyn = clip01((feat.rms_dynamic_range_db - 4.0) / 12.0)   # 4 dB → 0，16 dB → 1
 
-    # v0.2：去掉 v0.1 的固定项 0.3·0.5（它使干净语音的负面分恒 ≥0.15 且无法被特征抵消）；
-    # 各项权重和为 1，绝对偏置由融合层的中性校准（config/modality_calibration.json）处理。
-    s_physical = 0.4 * norm_roughness + 0.3 * (1 - norm_snr) + 0.3 * norm_hf_extreme
-    a_physical = 0.35 * norm_loudness + 0.25 * norm_centroid + 0.20 * norm_hf + 0.20 * norm_roughness
+    # v0.3：负面分只保留粗糙度（v0.2 的 SNR / 高频极端度项在消融中与效价负相关，属反向噪声）；
+    # 唤醒分加入能量动态范围。绝对偏置由融合层的中性校准处理。
+    s_physical = norm_roughness
+    a_physical = (0.30 * norm_loudness + 0.20 * norm_centroid + 0.15 * norm_hf
+                  + 0.15 * norm_roughness + 0.20 * norm_dyn)
 
     detail = {
         "rms": feat.rms, "spectral_centroid": feat.spectral_centroid,
         "hf_energy_ratio": feat.hf_energy_ratio, "snr_db": feat.snr_db,
-        "roughness": feat.roughness,
+        "roughness": feat.roughness, "rms_dynamic_range_db": feat.rms_dynamic_range_db,
         "s_physical": clip01(s_physical), "a_physical": clip01(a_physical),
     }
     return clip01(s_physical), clip01(a_physical), detail

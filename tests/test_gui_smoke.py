@@ -355,6 +355,45 @@ def test_resolve_recorder_device_parses_id(record_window):
 
 
 # ====================================================================
+# 个人基线校准（v0.3）
+# ====================================================================
+def test_calibration_mode_saves_baseline_and_does_not_update_metrics(window, tmp_path, monkeypatch):
+    from src.fusion import personal_calibration
+    monkeypatch.setattr(personal_calibration, "DEFAULT_PATH", tmp_path / "user_baseline.json")
+    window._calibration_mode = True
+    window._pending_audio_path = "calm.wav"
+    result = {
+        "negative": 0.9, "valence": 0.1, "arousal": 0.9, "dominant_quadrant": "Q2",
+        "modal_scores_raw": {"acoustic": {"negative": 0.6, "arousal": 0.35},
+                             "prosody": {"negative": 0.5, "arousal": 0.5}},
+        "modal_scores": {}, "asr_text": "", "audio_quality": {"snr_db": 30.0},
+        "paralang_events": [], "memberships": {"Q1": 0, "Q2": 1, "Q3": 0, "Q4": 0},
+        "duration": 30.0, "asr_confidence": 0.9,
+    }
+    window._on_analysis_done(result)
+    saved = personal_calibration.load(tmp_path / "user_baseline.json")
+    assert saved["acoustic"] == (-0.1, 0.15)
+    assert window._calibration_mode is False
+    assert window.last_result is None                  # 校准不作为情绪结果
+    assert "0.9" not in window.metric_negative.value_label.text()
+
+
+def test_uncertainty_shown_in_quadrant_label(window):
+    result = {
+        "negative": 0.72, "valence": 0.28, "arousal": 0.61, "dominant_quadrant": "Q2",
+        "modal_scores": {"acoustic": {"negative": 0.68, "arousal": 0.7}},
+        "asr_text": "x", "audio_quality": {"snr_db": 22.0}, "paralang_events": [],
+        "memberships": {"Q1": 0.1, "Q2": 0.7, "Q3": 0.1, "Q4": 0.1}, "duration": 3.5,
+        "asr_confidence": 0.9,
+        "uncertainty": {"negative_sd": 0.21, "arousal_sd": 0.05, "n_active": 6},
+        "calibration_source": "personal",
+    }
+    window._on_analysis_done(result)
+    txt = window.quadrant_label.text()
+    assert "±0.21" in txt and "个人基线" in txt
+
+
+# ====================================================================
 # 主题：调色板单一来源
 # ====================================================================
 def test_build_qss_renders_all_placeholders():

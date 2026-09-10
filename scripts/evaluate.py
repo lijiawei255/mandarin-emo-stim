@@ -25,6 +25,14 @@ v0.2 起：
   ``config/modality_calibration.json``（offset = 0.5 − 均值），供融合层做基线归一化；
 - ``emotion`` 按说话人划分 **dev / test**（说话人 id 排序后前半 dev、后半 test），
   融合权重的网格搜索只在 dev 上进行，test 只报告一次，避免在同一批数据上调参与报告。
+
+v0.3 起：
+- **性别均衡的 5 折说话人交叉验证**（每折 1 女 + 1 男）替代单次 dev/test 作为正式数字：
+  对每折在训练折上选权重 / 拟合岭回归，在留出折上评估，报告均值 ± 标准差；
+- **说话人级中性基线**：用每位说话人自己的 neutral 句计算个人偏移（模拟用户级基线校准），
+  在其非中性句上评估；
+- **可学习融合**：岭回归（src/fusion/learned_fusion.py）的 CV 表现与手工权重对照，
+  并用全部数据拟合写出 ``config/learned_fusion.json``（默认不启用）。
 """
 
 from __future__ import annotations
@@ -67,7 +75,9 @@ CSEM_REPO = "AIDC-AI/CSEMOTIONS"
 
 SEED = 20260910
 CALIB_PATH = portable.CONFIG_DIR / "modality_calibration.json"
+LEARNED_PATH = portable.CONFIG_DIR / "learned_fusion.json"
 OFFSET_CLIP = 0.3
+CV_FOLDS = 5
 _PUNCT_RE = re.compile(r"[，。！？、；：,.!?;:\"'“”‘’（）()《》<>【】\[\]…—\-\s]+")
 
 # CSEMOTIONS 7 类 → 参照象限。neutral / surprise 单独报告，不计入严格象限准确率
@@ -304,15 +314,26 @@ class _Runner:
 
 def _refuse(config: dict, rec: dict, *, drop: set[str] = frozenset(),
             only: str | None = None, dynamic: bool = True,
-            weights: dict[str, dict[str, float]] | None = None) -> dict[str, Any]:
-    """在缓存的**原始**模态分数上离线重算融合（消融 / 动态权重开关 / 权重覆盖）。
+            weights: dict[str, dict[str, float]] | None = None,
+            offsets: dict[str, tuple[float, float]] | None = None,
+            learned=None) -> dict[str, Any]:
+    """在缓存的**原始**模态分数上离线重算融合（消融 / 动态权重开关 / 权重覆盖 /
+    偏移覆盖 / 可学习融合）。
 
     中性校准偏移由 WeightedFusion 按 config 自行施加，因此这里必须喂原始分。
+    ``offsets`` 给定时**替换**融合器的偏移（用于说话人级基线）；``learned`` 给定时
+    用该 LearnedFusion 计算 negative/arousal。
     """
     from src.fusion.weighted_fusion import MODALITIES, WeightedFusion
     if weights is not None:
         config = {**config, "fusion_weights": weights}
     fus = WeightedFusion(config)
+    if offsets is not None:
+        fus.offsets = dict(offsets)
+        fus.calibration_source = "speaker"
+    if learned is not None:
+        fus.learned = learned
+        fus.fusion_mode = "learned"
     raw = rec.get("modal_scores_raw", rec["modal_scores"])
     scores = {}
     for m in MODALITIES:
@@ -591,6 +612,86 @@ def _weight_grid(base: dict[str, dict[str, float]]) -> list[tuple[str, dict[str,
     return grid
 
 
+def _cv_folds(rows: list[dict[str, Any]], k: int = CV_FOLDS) -> list[list[str]]:
+    """性别均衡的说话人折：按性别分组后轮转分配（CSEMOTIONS id 形如 female001 / male003）。"""
+    spk = sorted({r["speaker"] for r in rows})
+    groups: dict[str, list[str]] = defaultdict(list)
+    for s in spk:
+        groups["f" if s.lower().startswith(("f", "female")) else "m"].append(s)
+    folds: list[list[str]] = [[] for _ in range(k)]
+    for g in groups.values():
+        for i, s in enumerate(g):
+            folds[i % k].append(s)
+    return [f for f in folds if f]
+
+
+def _speaker_offsets(rows: list[dict[str, Any]], speaker: str) -> dict[str, tuple[float, float]]:
+    """说话人级中性基线：用其 neutral 句的原始均值，offset = 0.5 − 均值（排除 paralang）。"""
+    from src.fusion.personal_calibration import compute_offsets
+    raws = [r.get("modal_scores_raw", r["modal_scores"]) for r in rows
+            if r["speaker"] == speaker and r["emotion"] == "neutral"]
+    return {m: (v["negative"], v["arousal"]) for m, v in compute_offsets(raws).items()}
+
+
+def _metrics_of(rows: list[dict[str, Any]]) -> dict[str, float]:
+    q = _quadrant_metrics(rows)
+    d = _direction_metrics(rows)
+    return {"accuracy": q["accuracy"], "rhoA": d["spearman_arousal"],
+            "rhoV": d["spearman_valence"], "pairwise_pass": d["pairwise_pass"], "n": q["n"]}
+
+
+def _agg(per_fold: list[dict[str, float]]) -> dict[str, Any]:
+    out: dict[str, Any] = {"folds": per_fold}
+    for k in ("accuracy", "rhoA", "rhoV", "pairwise_pass"):
+        vals = np.asarray([f[k] for f in per_fold], dtype=np.float64)
+        vals = vals[np.isfinite(vals)]
+        out[k] = {"mean": float(vals.mean()) if len(vals) else float("nan"),
+                  "sd": float(vals.std(ddof=1)) if len(vals) > 1 else 0.0}
+    return out
+
+
+def _cross_validate(config: dict, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """5 折说话人 CV：默认权重 / 训练折选权重 / 岭回归 / 说话人级基线 / 校准关。"""
+    from src.fusion.learned_fusion import fit_from_rows
+    folds = _cv_folds(rows)
+    res: dict[str, list[dict[str, float]]] = defaultdict(list)
+    cfg_nocal = {**config, "fusion_calibration": {"enabled": False}}
+    for held in folds:
+        test = [r for r in rows if r["speaker"] in held]
+        train = [r for r in rows if r["speaker"] not in held]
+        # (0) 校准关 + 默认权重
+        res["no_calibration"].append(_metrics_of(_apply(cfg_nocal, test)))
+        # (a) 语料校准 + 默认权重
+        res["default"].append(_metrics_of(_apply(config, test)))
+        # (b) 训练折上网格选权重
+        best = max(_weight_grid(config["fusion_weights"]),
+                   key=lambda nw: _score_block(_apply(config, train, weights=nw[1]))["composite"])
+        res["grid_on_train"].append({**_metrics_of(_apply(config, test, weights=best[1])), "chosen": best[0]})
+        # (c) 岭回归（训练折拟合，原始分）
+        try:
+            lf = fit_from_rows(train, l2=1.0)
+            res["learned"].append(_metrics_of(_apply(config, test, learned=lf)))
+        except ValueError:
+            pass
+        # (d) 说话人级中性基线（每位留出说话人用自己的 neutral 句算偏移）
+        sp_rows: list[dict[str, Any]] = []
+        for spk in held:
+            off = _speaker_offsets(rows, spk)
+            base = WeightedFusionOffsets(config)
+            merged = {**base, **off} if off else base
+            sp_rows.extend(_apply(config, [r for r in test if r["speaker"] == spk], offsets=merged))
+        res["speaker_baseline"].append(_metrics_of(sp_rows))
+    out = {name: _agg(v) for name, v in res.items()}
+    out["folds_speakers"] = folds
+    return out
+
+
+def WeightedFusionOffsets(config: dict) -> dict[str, tuple[float, float]]:
+    """当前配置下的语料偏移（供说话人级基线在其上覆盖）。"""
+    from src.fusion.weighted_fusion import load_modality_calibration
+    return load_modality_calibration(config)
+
+
 def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
     import jiwer
 
@@ -626,6 +727,19 @@ def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
     rows = _apply(config, rows, weights=best["weights"])
     config = {**config, "fusion_weights": best["weights"]}
     summary["full"] = {"quadrant": _quadrant_metrics(rows), "direction": _direction_metrics(rows)}
+    # ---- v0.3：性别均衡 5 折说话人交叉验证 ----
+    summary["cv"] = _cross_validate(config, rows)
+    # 用全部数据拟合可学习融合并写出（默认不启用）
+    try:
+        from src.fusion.learned_fusion import fit_from_rows
+        lf = fit_from_rows(rows, l2=1.0, meta={
+            "source": "CSEMOTIONS full sample (acted emotions, studio)",
+            "cv": summary["cv"]["learned"], "generated": date.today().isoformat(),
+            "script": "scripts/evaluate.py emotion"})
+        lf.save(LEARNED_PATH)
+        summary["learned_fusion_path"] = str(LEARNED_PATH)
+    except ValueError as e:
+        summary["learned_fusion_error"] = str(e)
     # 动态权重关闭
     static_rows = []
     for r in rows:
@@ -666,6 +780,12 @@ def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
          f"ρA={t['direction']['spearman_arousal']:.3f} ρV={t['direction']['spearman_valence']:.3f}")
     _log(f"[校准 off→on，全体] 准确率 {summary['calibration_off']['quadrant']['accuracy']:.3f} → "
          f"{summary['calibration_on']['quadrant']['accuracy']:.3f}")
+    cv = summary["cv"]
+    for name in ("no_calibration", "default", "grid_on_train", "learned", "speaker_baseline"):
+        if name in cv:
+            c = cv[name]
+            _log(f"[5 折 CV] {name:16s} acc={c['accuracy']['mean']:.3f}±{c['accuracy']['sd']:.3f} "
+                 f"ρA={c['rhoA']['mean']:.2f}±{c['rhoA']['sd']:.2f} ρV={c['rhoV']['mean']:.2f}±{c['rhoV']['sd']:.2f}")
     return 0
 
 
@@ -749,6 +869,20 @@ def cmd_report(args: argparse.Namespace) -> int:
         for e, c in q["confusion"].items():
             out.append(f"| {e}（{EMOTION_TO_QUADRANT[e]}） | " + " | ".join(str(c.get(x, 0)) for x in ("Q1", "Q2", "Q3", "Q4")) + " |")
         out.append("")
+        if "cv" in s:
+            cv = s["cv"]
+            out.append(f"**性别均衡 5 折说话人交叉验证**（折：{cv['folds_speakers']}；均值 ± 标准差；正式数字）\n")
+            out.append("| 设置 | 象限准确率 | ρ arousal | ρ valence | 方向检验(8) |\n|------|---:|---:|---:|---:|")
+            labels = {"no_calibration": "校准关 + 默认权重", "default": "语料校准 + 默认权重",
+                      "grid_on_train": "语料校准 + 训练折选权重", "learned": "岭回归（训练折拟合）",
+                      "speaker_baseline": "说话人级中性基线 + 默认权重"}
+            for key, lab in labels.items():
+                if key in cv:
+                    c = cv[key]
+                    out.append(f"| {lab} | {c['accuracy']['mean']:.3f} ± {c['accuracy']['sd']:.3f} | "
+                               f"{c['rhoA']['mean']:.2f} ± {c['rhoA']['sd']:.2f} | {c['rhoV']['mean']:.2f} ± {c['rhoV']['sd']:.2f} | "
+                               f"{c['pairwise_pass']['mean']:.1f} |")
+            out.append("")
         if "split" in s:
             sp = s["split"]
             out.append("**中性校准（全体样本）**\n")
