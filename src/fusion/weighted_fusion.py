@@ -80,7 +80,7 @@ class WeightedFusion:
         self.mid_v = thr["quadrant_mid_v"]
         self.mid_a = thr["quadrant_mid_a"]
         self.band = thr["quadrant_band"]
-        self.offsets, self.calibration_source = load_all_calibration(config)
+        self.offsets, self.calibration_source, self.calibration_profile = load_all_calibration(config)
         self.fusion_mode = "weighted"
         self.learned = None
         if str(config.get("fusion_mode", "weighted")).lower() == "learned":
@@ -244,6 +244,7 @@ class WeightedFusion:
             "uncertainty": uncertainty,
             "fusion_mode": self.fusion_mode,
             "calibration_source": self.calibration_source,
+            "calibration_profile": self.calibration_profile,
         }
 
 
@@ -264,19 +265,30 @@ def _weighted_sd(modal_scores: dict[str, dict[str, float]], w_s: dict[str, float
     return out
 
 
-def load_all_calibration(config: dict[str, Any]) -> tuple[dict[str, tuple[float, float]], str]:
-    """语料偏移 + 个人偏移（个人覆盖语料）。返回 (offsets, 来源: none/corpus/personal)。"""
+def load_all_calibration(config: dict[str, Any]) -> tuple[dict[str, tuple[float, float]], str, str | None]:
+    """语料偏移 + 个人偏移（个人覆盖语料）。
+
+    返回 (offsets, 来源: none/corpus/personal, 档案名或 None)。个人偏移来自当前激活的
+    受试者档案（``personal_calibration.load_active``）；``fusion_calibration.personal_path``
+    显式给定时读取该单文件基线（测试/脚本用）。
+    """
     offsets = load_modality_calibration(config)
     source = "corpus" if offsets else "none"
+    profile: str | None = None
     fc = config.get("fusion_calibration", {}) or {}
     if fc.get("enabled", True) and fc.get("personal", True):
         from src.fusion import personal_calibration
         pp = fc.get("personal_path")
-        personal = personal_calibration.load(Path(pp) if pp else None)
+        if pp:
+            personal, profile = personal_calibration.load(Path(pp)), Path(pp).stem
+        else:
+            personal, profile = personal_calibration.load_active()
         if personal:
             offsets = {**offsets, **personal}
             source = "personal"
-    return offsets, source
+        else:
+            profile = None
+    return offsets, source, profile
 
 
 def load_modality_calibration(config: dict[str, Any]) -> dict[str, tuple[float, float]]:

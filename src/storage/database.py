@@ -66,6 +66,12 @@ class HistoryDB:
                 )
                 """
             )
+            # v0.4 增列（对旧库做幂等迁移）：校准来源 / 受试者档案 / 模态分歧
+            existing = {row["name"] for row in conn.execute("PRAGMA table_info(records)")}
+            for col, typ in (("calibration_profile", "TEXT"), ("calibration_source", "TEXT"),
+                             ("uncertainty", "TEXT")):
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE records ADD COLUMN {col} {typ}")
             conn.commit()
 
     # ------------------------------------------------------------------ #
@@ -91,7 +97,7 @@ class HistoryDB:
 
             record = dict(record)
             record.setdefault("created_at", datetime.now().isoformat(timespec="seconds"))
-            for key in ("modal_scores", "memberships", "paralang_events", "stimulus_params"):
+            for key in ("modal_scores", "memberships", "paralang_events", "stimulus_params", "uncertainty"):
                 val = record.get(key)
                 if isinstance(val, (dict, list)):
                     record[key] = json.dumps(val, ensure_ascii=False)

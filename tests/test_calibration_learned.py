@@ -53,6 +53,7 @@ def test_personal_offsets_override_corpus_offsets(tmp_path):
     assert fus.offsets["acoustic"] == (-0.2, 0.1)   # 个人覆盖
     assert fus.offsets["paralang"] == (0.02, 0.0)   # 语料保留
     assert fus.calibration_source == "personal"
+    assert fus.calibration_profile == "user"
     cfg["fusion_calibration"]["personal"] = False
     assert WeightedFusion(cfg).offsets["acoustic"] == (0.05, 0.05)
 

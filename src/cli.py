@@ -35,16 +35,37 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--duration", type=float, default=None,
                         help="刺激时长（秒），默认取配置")
     parser.add_argument("--json", default=None, help="把完整结果写入该 JSON 文件")
+    parser.add_argument("--profile", default=None,
+                        help="受试者档案名：分析时选用该档案的个人基线；与 --calibrate-user 连用时把录音并入该档案")
     parser.add_argument("--calibrate-user", action="store_true",
-                        help="把 --audio 当作用户的平静朗读样本，计算并保存个人基线（不生成刺激）")
-    parser.add_argument("--clear-user-calibration", action="store_true", help="删除已保存的个人基线")
+                        help="把 --audio 当作受试者的平静朗读样本并入 --profile 档案（不生成刺激）；多次调用取平均")
+    parser.add_argument("--list-profiles", action="store_true", help="列出已保存的受试者档案")
+    parser.add_argument("--clear-user-calibration", action="store_true",
+                        help="删除 --profile 指定的档案（未指定则删除 v0.3 单文件基线）")
     args = parser.parse_args(argv)
 
+    from src.fusion import personal_calibration as pc
+    if args.list_profiles:
+        names = pc.list_profiles()
+        active = pc.get_active()
+        print("受试者档案：" + (", ".join(f"{n}{' (激活)' if n == active else ''}" for n in names) or "（无）"), flush=True)
+        return 0
     if args.clear_user_calibration:
-        from src.fusion import personal_calibration
-        print("已删除个人基线" if personal_calibration.clear() else "没有个人基线可删除", flush=True)
+        if args.profile:
+            print(f"已删除档案 {args.profile}" if pc.delete_profile(args.profile) else "档案不存在", flush=True)
+        else:
+            print("已删除个人基线" if pc.clear() else "没有个人基线可删除", flush=True)
         if not args.calibrate_user and args.audio in (None, ""):
             return 0
+    if args.profile and not args.calibrate_user:
+        if args.profile not in pc.list_profiles():
+            print(f"\n[错误] 档案不存在：{args.profile}（用 --list-profiles 查看）", flush=True)
+            return 2
+        pc.set_active(args.profile)
+        print(f"已选用受试者档案：{args.profile}", flush=True)
+    if args.calibrate_user and not args.profile:
+        print("\n[错误] --calibrate-user 需要 --profile 指定受试者档案名", flush=True)
+        return 2
 
     # 先做廉价的输入校验，再加载耗时的模型（也避免测试环境无模型时触发下载）
     if args.audio is None:
@@ -69,13 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         result = pipeline.analyze(args.audio, progress_cb=_progress)
 
         if args.calibrate_user:
-            from src.fusion import personal_calibration
-            offsets = personal_calibration.compute_offsets([result["modal_scores_raw"]])
-            path = personal_calibration.save(offsets, meta={"source": str(audio_path),
-                                                            "duration_sec": result["duration"]})
-            print(f"\n=== 个人基线已保存: {path} ===", flush=True)
-            for m, v in offsets.items():
-                print(f"  {m:10s} negative {v['negative']:+.3f}  arousal {v['arousal']:+.3f}", flush=True)
+            path = pc.save_profile(args.profile, [result["modal_scores_raw"]],
+                                   meta={"source": str(audio_path), "duration_sec": result["duration"]})
+            pc.set_active(args.profile)
+            info = pc.profile_info(args.profile)
+            print(f"\n=== 档案 {args.profile} 已更新（{info.get('n_samples')} 次录音取平均）并设为激活: {path} ===", flush=True)
+            for m, v in pc.load_profile(args.profile).items():
+                print(f"  {m:10s} negative {v[0]:+.3f}  arousal {v[1]:+.3f}", flush=True)
             manager.unload_all()
             return 0
 
@@ -89,9 +110,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  有效时长       : {result['duration']:.2f} s")
         unc = result.get("uncertainty") or {}
         if unc:
+            rel = result.get("reliability") or {}
+            rel_txt = f"  {rel['label_zh']}（该档实测准确率 {rel['accuracy_in_bin']:.2f}）" if rel and rel.get("accuracy_in_bin") is not None else ""
+            prof = result.get("calibration_profile")
             print(f"  模态分歧(SD)   : negative {unc.get('negative_sd', 0):.3f}  "
-                  f"arousal {unc.get('arousal_sd', 0):.3f}  [{result.get('calibration_source', 'none')} 校准, "
-                  f"{result.get('fusion_mode', 'weighted')} 融合]")
+                  f"arousal {unc.get('arousal_sd', 0):.3f}{rel_txt}")
+            print(f"  校准 / 融合    : {result.get('calibration_source', 'none')}"
+                  f"{'（档案 ' + prof + '）' if prof else ''} / {result.get('fusion_mode', 'weighted')}；"
+                  f"ASR 置信度 {result.get('asr_confidence', 0):.3f}（{result.get('asr_confidence_source', 'proxy')}）")
         if result.get("degraded_modalities"):
             print(f"  [警告] 以下模态因异常降级为中性分: "
                   f"{', '.join(result['degraded_modalities'])}", flush=True)

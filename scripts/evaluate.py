@@ -33,6 +33,12 @@ v0.3 起：
   在其非中性句上评估；
 - **可学习融合**：岭回归（src/fusion/learned_fusion.py）的 CV 表现与手工权重对照，
   并用全部数据拟合写出 ``config/learned_fusion.json``（默认不启用）。
+
+v0.4 起：
+- **不确定性校准**：在 CV 的留出折预测上，按模态分歧度（uncertainty）三等分，统计每档的
+  象限准确率，写出 ``config/uncertainty_thresholds.json`` 供 GUI 显示「可信度」等级；
+- **ASR 后验置信度**：报告 Paraformer token 后验均值的分布及其与逐句 CER 的 Spearman 相关，
+  作为 ``asr_confidence_threshold`` 取值依据。
 """
 
 from __future__ import annotations
@@ -76,6 +82,7 @@ CSEM_REPO = "AIDC-AI/CSEMOTIONS"
 SEED = 20260910
 CALIB_PATH = portable.CONFIG_DIR / "modality_calibration.json"
 LEARNED_PATH = portable.CONFIG_DIR / "learned_fusion.json"
+UNC_PATH = portable.CONFIG_DIR / "uncertainty_thresholds.json"
 OFFSET_CLIP = 0.3
 CV_FOLDS = 5
 _PUNCT_RE = re.compile(r"[，。！？、；：,.!?;:\"'“”‘’（）()《》<>【】\[\]…—\-\s]+")
@@ -309,6 +316,7 @@ class _Runner:
             "paralang_events": r["paralang_events"],
             "degraded_modalities": r.get("degraded_modalities", []),
             "prosody": r["modal_details"].get("prosody", {}),
+            "asr_confidence_source": r.get("asr_confidence_source", "proxy"),
         }
 
 
@@ -493,6 +501,7 @@ def cmd_neutral(args: argparse.Namespace) -> int:
     }
     summary["modal_means_raw"] = raw_means
     summary["offsets"] = offsets
+    summary["asr_confidence"] = _asr_confidence_analysis(rows)
     _json_dump(summary, RESULTS_DIR / "neutral_summary.json")
     _log(f"CER={cer:.3f}  negative μ={summary['negative'][0]:.3f}  "
          f"arousal μ={summary['arousal'][0]:.3f}  象限分布={summary['quadrant_hist']}")
@@ -591,7 +600,7 @@ def _apply(config: dict, rows: list[dict[str, Any]], **kw) -> list[dict[str, Any
         f = _refuse(config, r, **kw)
         out.append({**r, "valence": f["valence"], "arousal": f["arousal"],
                     "negative": f["negative"], "dominant_quadrant": f["dominant_quadrant"],
-                    "modal_scores": f["modal_scores"]})
+                    "modal_scores": f["modal_scores"], "uncertainty": f.get("uncertainty", {})})
     return out
 
 
@@ -616,6 +625,30 @@ def _weight_grid(base: dict[str, dict[str, float]]) -> list[tuple[str, dict[str,
             neg[m] = round(others[m] + freed * others[m] / tot, 4)
         grid.append((f"text_llm.neg={w:.2f}", {"negative": neg, "arousal": dict(base["arousal"])}))
     return grid
+
+
+def _asr_confidence_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """后验置信度分布 + 与逐句 CER 的 Spearman（负相关说明置信度有信息）。"""
+    import jiwer
+    from scipy.stats import spearmanr
+    conf, cer = [], []
+    for r in rows:
+        ref, hyp = _strip_punct(r.get("ref_text", "")), _strip_punct(r.get("asr_text", ""))
+        if not ref:
+            continue
+        conf.append(float(r["asr_confidence"]))
+        cer.append(jiwer.cer(" ".join(ref), " ".join(hyp)) if hyp else 1.0)
+    if len(conf) < 10:
+        return {}
+    conf_a, cer_a = np.array(conf), np.array(cer)
+    rho = spearmanr(conf_a, cer_a).correlation
+    return {"n": len(conf), "source": Counter(r.get("asr_confidence_source", "proxy") for r in rows).most_common(1)[0][0],
+            "mean": float(conf_a.mean()), "sd": float(conf_a.std(ddof=1)),
+            "p5": float(np.percentile(conf_a, 5)), "p25": float(np.percentile(conf_a, 25)),
+            "median": float(np.median(conf_a)), "min": float(conf_a.min()),
+            "spearman_conf_vs_cer": float(rho) if np.isfinite(rho) else None,
+            "cer_when_conf_below_p10": float(cer_a[conf_a <= np.percentile(conf_a, 10)].mean()),
+            "cer_when_conf_above_p10": float(cer_a[conf_a > np.percentile(conf_a, 10)].mean())}
 
 
 def _cv_folds(rows: list[dict[str, Any]], k: int = CV_FOLDS) -> list[list[str]]:
@@ -661,14 +694,17 @@ def _cross_validate(config: dict, rows: list[dict[str, Any]]) -> dict[str, Any]:
     from src.fusion.learned_fusion import fit_from_rows
     folds = _cv_folds(rows)
     res: dict[str, list[dict[str, float]]] = defaultdict(list)
+    heldout_predictions: list[dict[str, Any]] = []
     cfg_nocal = {**config, "fusion_calibration": {"enabled": False}}
     for held in folds:
         test = [r for r in rows if r["speaker"] in held]
         train = [r for r in rows if r["speaker"] not in held]
         # (0) 校准关 + 默认权重
         res["no_calibration"].append(_metrics_of(_apply(cfg_nocal, test)))
-        # (a) 语料校准 + 默认权重
-        res["default"].append(_metrics_of(_apply(config, test)))
+        # (a) 语料校准 + 默认权重（留出折预测同时用于不确定性校准）
+        pred_default = _apply(config, test)
+        res["default"].append(_metrics_of(pred_default))
+        heldout_predictions.extend(pred_default)
         # (b) 训练折上网格选权重
         best = max(_weight_grid(config["fusion_weights"]),
                    key=lambda nw: _score_block(_apply(config, train, weights=nw[1]))["composite"])
@@ -689,7 +725,37 @@ def _cross_validate(config: dict, rows: list[dict[str, Any]]) -> dict[str, Any]:
         res["speaker_baseline"].append(_metrics_of(sp_rows))
     out = {name: _agg(v) for name, v in res.items()}
     out["folds_speakers"] = folds
+    out["uncertainty_calibration"] = _uncertainty_calibration(heldout_predictions)
     return out
+
+
+def _uncertainty_calibration(preds: list[dict[str, Any]]) -> dict[str, Any]:
+    """留出折预测上：分歧度（max(negative_sd, arousal_sd)）三等分，每档象限准确率。"""
+    from scipy.stats import spearmanr
+    labeled = [p for p in preds if p["emotion"] in EMOTION_TO_QUADRANT and p.get("uncertainty")]
+    if len(labeled) < 30:
+        return {}
+    score = np.array([max(p["uncertainty"].get("negative_sd", 0.0), p["uncertainty"].get("arousal_sd", 0.0))
+                      for p in labeled])
+    correct = np.array([p["dominant_quadrant"] == EMOTION_TO_QUADRANT[p["emotion"]] for p in labeled], dtype=float)
+    c1, c2 = np.percentile(score, [100 / 3, 200 / 3])
+    masks = {"t0": score < c1, "t1": (score >= c1) & (score < c2), "t2": score >= c2}
+    terciles: dict[str, dict[str, Any]] = {}
+    for t, mask in masks.items():
+        terciles[t] = {"n": int(mask.sum()),
+                       "accuracy": float(correct[mask].mean()) if mask.any() else float("nan"),
+                       "score_range": [float(score[mask].min()) if mask.any() else None,
+                                       float(score[mask].max()) if mask.any() else None]}
+    # 等级按实测准确率排序命名，不假设「分歧小 = 可信」（实测方向相反，见 reliability.py）
+    order = sorted(terciles, key=lambda t: -terciles[t]["accuracy"])
+    for t, g in zip(order, ("high", "medium", "low"), strict=False):
+        terciles[t]["grade"] = g
+    rho = spearmanr(score, correct).correlation
+    return {"cuts": [round(float(c1), 4), round(float(c2), 4)], "terciles": terciles,
+            "spearman_score_vs_correct": float(rho) if np.isfinite(rho) else None,
+            "n": len(labeled),
+            "definition": "score = max(negative_sd, arousal_sd) of active modalities; terciles on held-out CV "
+                          "predictions; grade assigned by empirical accuracy rank (not by assumed direction)"}
 
 
 def WeightedFusionOffsets(config: dict) -> dict[str, tuple[float, float]]:
@@ -735,6 +801,15 @@ def _emotion_summarize(config: dict, rows: list[dict[str, Any]]) -> int:
     summary["full"] = {"quadrant": _quadrant_metrics(rows), "direction": _direction_metrics(rows)}
     # ---- v0.3：性别均衡 5 折说话人交叉验证 ----
     summary["cv"] = _cross_validate(config, rows)
+    unc = summary["cv"].get("uncertainty_calibration") or {}
+    if unc:
+        _json_dump({"_meta": {"source": "CSEMOTIONS 5-fold speaker CV held-out predictions, default config",
+                              "generated": date.today().isoformat(), "script": "scripts/evaluate.py emotion",
+                              "n": unc["n"], "definition": unc["definition"],
+                              "spearman_score_vs_correct": unc["spearman_score_vs_correct"]},
+                    "score": "max(negative_sd, arousal_sd)", "cuts": unc["cuts"], "terciles": unc["terciles"]}, UNC_PATH)
+    # ASR 后验置信度：分布及其与逐句 CER 的相关
+    summary["asr_confidence"] = _asr_confidence_analysis(rows)
     # 用全部数据拟合可学习融合并写出（默认不启用）
     try:
         from src.fusion.learned_fusion import fit_from_rows
@@ -840,6 +915,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         out.append(f"| 象限分布 | {s['quadrant_hist']} |")
         if s.get("degraded_counts"):
             out.append(f"| 降级模态计数 | {s['degraded_counts']} |")
+        if s.get("asr_confidence"):
+            a = s["asr_confidence"]
+            out.append(f"| ASR 置信度（{a['source']}）均值 / P5 / 最小 | {_fmt(a['mean'])} / {_fmt(a['p5'])} / {_fmt(a['min'])} |")
+            out.append(f"| 置信度 vs 逐句 CER 的 Spearman ρ | {_fmt(a['spearman_conf_vs_cer'])} |")
         out.append("\n各模态在中性语音上的均值：\n")
         out.append("| 模态 | negative μ | arousal μ |\n|------|---:|---:|")
         for m, v in s["modal_means"].items():
@@ -875,6 +954,22 @@ def cmd_report(args: argparse.Namespace) -> int:
         for e, c in q["confusion"].items():
             out.append(f"| {e}（{EMOTION_TO_QUADRANT[e]}） | " + " | ".join(str(c.get(x, 0)) for x in ("Q1", "Q2", "Q3", "Q4")) + " |")
         out.append("")
+        if s.get("asr_confidence"):
+            a = s["asr_confidence"]
+            out.append(f"**ASR 置信度（{a['source']}，n={a['n']}）**：均值 {_fmt(a['mean'])}，SD {_fmt(a['sd'])}，"
+                       f"P5 {_fmt(a['p5'])}，P25 {_fmt(a['p25'])}，最小 {_fmt(a['min'])}；与逐句 CER 的 Spearman ρ = "
+                       f"{_fmt(a['spearman_conf_vs_cer'])}；置信度最低 10% 句子的 CER {_fmt(a['cer_when_conf_below_p10'])} vs "
+                       f"其余 {_fmt(a['cer_when_conf_above_p10'])}\n")
+        if "cv" in s and s["cv"].get("uncertainty_calibration"):
+            u = s["cv"]["uncertainty_calibration"]
+            out.append(f"**不确定性校准**（留出折预测 n={u['n']}；分歧度 = 活跃模态加权 SD 的较大者；"
+                       f"分歧度与判对的 Spearman ρ = {_fmt(u['spearman_score_vs_correct'])}，**正相关**：模态一致往往"
+                       f"意味着都接近中性、证据弱；等级按各档实测准确率命名）\n")
+            out.append("| 分歧度三分位 | 区间 | n | 象限准确率 | 等级 |\n|------|------|--:|---:|------|")
+            for t in ("t0", "t1", "t2"):
+                b = u["terciles"][t]
+                out.append(f"| {t} | {_fmt(b['score_range'][0])}–{_fmt(b['score_range'][1])} | {b['n']} | {_fmt(b['accuracy'])} | {b.get('grade', '—')} |")
+            out.append("")
         if "cv" in s:
             cv = s["cv"]
             out.append(f"**性别均衡 5 折说话人交叉验证**（折：{cv['folds_speakers']}；均值 ± 标准差；正式数字）\n")

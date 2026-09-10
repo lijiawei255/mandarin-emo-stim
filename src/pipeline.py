@@ -114,6 +114,7 @@ class AnalysisPipeline:
         ctx["asr"] = result
         ctx["asr_text"] = result["text"]
         ctx["asr_confidence"] = result["confidence"]
+        ctx["asr_confidence_source"] = result.get("confidence_source", "proxy")
         # VAD
         vad_info = vad.vad_from_asr_result(ctx["y"], ctx["sr"], result)
         ctx["vad"] = vad_info
@@ -192,6 +193,7 @@ class AnalysisPipeline:
 
     # ------------------------------------------------------------------ #
     def _finalize(self, ctx: dict) -> dict[str, Any]:
+        from src.fusion.reliability import grade as _reliability
         fr = ctx["fusion_result"]
         return {
             "negative": fr["negative"],
@@ -203,8 +205,11 @@ class AnalysisPipeline:
             "modal_scores_raw": fr.get("modal_scores_raw", fr["modal_scores"]),
             "weights": fr["weights"],
             "uncertainty": fr.get("uncertainty", {}),
+            "reliability": _reliability(fr.get("uncertainty")),
             "fusion_mode": fr.get("fusion_mode", "weighted"),
             "calibration_source": fr.get("calibration_source", "none"),
+            "calibration_profile": fr.get("calibration_profile"),
+            "asr_confidence_source": ctx.get("asr_confidence_source", "proxy"),
             "asr_text": ctx.get("asr_text", ""),
             "asr_confidence": ctx.get("asr_confidence", 0.0),
             "audio_quality": {"snr_db": ctx.get("snr_db", 0.0)},

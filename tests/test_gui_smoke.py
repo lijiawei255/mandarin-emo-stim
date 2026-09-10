@@ -357,10 +357,12 @@ def test_resolve_recorder_device_parses_id(record_window):
 # ====================================================================
 # 个人基线校准（v0.3）
 # ====================================================================
-def test_calibration_mode_saves_baseline_and_does_not_update_metrics(window, tmp_path, monkeypatch):
+def test_calibration_mode_saves_profile_and_does_not_update_metrics(window, tmp_path, monkeypatch):
     from src.fusion import personal_calibration
-    monkeypatch.setattr(personal_calibration, "DEFAULT_PATH", tmp_path / "user_baseline.json")
+    monkeypatch.setattr(personal_calibration, "PROFILES_DIR", tmp_path / "profiles")
+    monkeypatch.setattr(personal_calibration, "ACTIVE_PATH", tmp_path / "active.json")
     window._calibration_mode = True
+    window._calibration_profile_name = "S01"
     window._pending_audio_path = "calm.wav"
     result = {
         "negative": 0.9, "valence": 0.1, "arousal": 0.9, "dominant_quadrant": "Q2",
@@ -371,8 +373,10 @@ def test_calibration_mode_saves_baseline_and_does_not_update_metrics(window, tmp
         "duration": 30.0, "asr_confidence": 0.9,
     }
     window._on_analysis_done(result)
-    saved = personal_calibration.load(tmp_path / "user_baseline.json")
+    saved = personal_calibration.load_profile("S01", tmp_path / "profiles")
     assert saved["acoustic"] == (-0.1, 0.15)
+    assert personal_calibration.get_active(tmp_path / "active.json") == "S01"
+    assert window.profile_combo.currentData() == "S01"
     assert window._calibration_mode is False
     assert window.last_result is None                  # 校准不作为情绪结果
     assert "0.9" not in window.metric_negative.value_label.text()
@@ -386,12 +390,13 @@ def test_uncertainty_shown_in_quadrant_label(window):
         "memberships": {"Q1": 0.1, "Q2": 0.7, "Q3": 0.1, "Q4": 0.1}, "duration": 3.5,
         "asr_confidence": 0.9,
         "uncertainty": {"negative_sd": 0.21, "arousal_sd": 0.05, "n_active": 6},
-        "calibration_source": "personal",
+        "calibration_source": "personal", "calibration_profile": "S07",
+        "reliability": {"grade": "low", "label_zh": "可信度低", "score": 0.21, "accuracy_in_bin": 0.55},
     }
     window._on_analysis_done(result)
     assert "Q2" in window.quadrant_label.text()
     meta = window.quadrant_meta.text()
-    assert "±0.21" in meta and "个人基线" in meta
+    assert "±0.21" in meta and "S07" in meta and "可信度低" in meta and "0.55" in meta
 
 
 # ====================================================================

@@ -143,6 +143,14 @@ class MainWindow(QMainWindow):
         self.device_combo.addItems(self._list_input_devices())
         layout.addWidget(self.device_combo)
 
+        # 受试者档案（个人基线）选择
+        layout.addWidget(self._h1("受试者档案"))
+        self.profile_combo = QComboBox()
+        self.profile_combo.setToolTip("选择预先录好的个人基线；「无」表示使用语料级校准")
+        self._refresh_profiles()
+        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        layout.addWidget(self.profile_combo)
+
         # 录制时长显示
         self.record_elapsed_label = QLabel("已录制：0.0 秒")
         self.record_elapsed_label.setProperty("role", "success")
@@ -158,6 +166,33 @@ class MainWindow(QMainWindow):
         self.btn_upload.clicked.connect(self.on_upload_clicked)
         self.btn_reset.clicked.connect(self.on_reset_clicked)
         return panel
+
+    _NO_PROFILE = "无（语料级校准）"
+
+    def _refresh_profiles(self, select: str | None = None) -> None:
+        """重载受试者档案下拉框；select 为 None 时按当前激活档案选中。"""
+        from src.fusion import personal_calibration as pc
+        names = pc.list_profiles()
+        active = select if select is not None else pc.get_active()
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        self.profile_combo.addItem(self._NO_PROFILE)
+        for n in names:
+            info = pc.profile_info(n)
+            self.profile_combo.addItem(f"{n}（{info.get('n_samples', '?')} 次录音）", n)
+        idx = 0
+        if active:
+            for i in range(1, self.profile_combo.count()):
+                if self.profile_combo.itemData(i) == active:
+                    idx = i
+        self.profile_combo.setCurrentIndex(idx)
+        self.profile_combo.blockSignals(False)
+
+    def _on_profile_changed(self, index: int) -> None:
+        from src.fusion import personal_calibration as pc
+        name = self.profile_combo.itemData(index) if index > 0 else None
+        pc.set_active(name)
+        self.status_block.set_status(f"已选用档案：{name}" if name else "已切换为语料级校准")
 
     def _list_input_devices(self) -> list[str]:
         try:
@@ -281,11 +316,11 @@ class MainWindow(QMainWindow):
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_export)
         file_menu.addSeparator()
-        act_calib = QAction("个人基线校准（录 30 秒平静朗读）", self)
+        act_calib = QAction("为受试者录制基线（30 秒平静朗读）…", self)
         act_calib.triggered.connect(self.on_calibrate_user)
-        act_calib_file = QAction("从音频文件设置个人基线…", self)
+        act_calib_file = QAction("从音频文件添加受试者基线…", self)
         act_calib_file.triggered.connect(self.on_calibrate_user_from_file)
-        act_calib_clear = QAction("清除个人基线", self)
+        act_calib_clear = QAction("删除当前受试者档案", self)
         act_calib_clear.triggered.connect(self.on_clear_user_calibration)
         file_menu.addAction(act_calib)
         file_menu.addAction(act_calib_file)
@@ -582,19 +617,41 @@ class MainWindow(QMainWindow):
         self._reenable_input_buttons()
 
     # ----- 个人基线校准 -----
+    def _ask_profile_name(self) -> str | None:
+        """询问受试者档案名（默认当前选中的档案）。返回 None 表示取消。"""
+        from PySide6.QtWidgets import QInputDialog
+
+        from src.fusion import personal_calibration as pc
+        current = self.profile_combo.currentData() or ""
+        name, ok = QInputDialog.getText(
+            self, "受试者档案",
+            "档案名（受试者编号，如 S01）。已有档案会追加本次录音并取平均：", text=current)
+        if not ok:
+            return None
+        try:
+            return pc.validate_name(name)
+        except ValueError as e:
+            QMessageBox.warning(self, "档案名无效", str(e))
+            return None
+
     def on_calibrate_user(self) -> None:
-        """录制一段平静朗读并据此保存个人基线。"""
+        """为受试者录制一段平静朗读并并入其档案（基线可预存，实验当天选用）。"""
         if self.manager is None:
             QMessageBox.warning(self, "未就绪", "模型尚未加载完成，请稍候。")
             return
+        name = self._ask_profile_name()
+        if not name:
+            return
         dur = int(self.config["audio"].get("calibration_duration_sec", 30))
         ok = QMessageBox.question(
-            self, "个人基线校准",
-            f"请用平静、日常的语气朗读任意一段文字约 {dur} 秒（到时自动停止）。\n"
-            "录制环境与麦克风请与实际使用时一致。\n\n准备好后点击「Yes」开始录音。",
+            self, f"录制基线：{name}",
+            f"请受试者用平静、日常的语气朗读任意一段文字约 {dur} 秒（到时自动停止）。\n"
+            "最好在受试者情绪平稳的场合（不必是实验当天）录制；录制环境与麦克风请与实际使用时一致。\n"
+            "同一档案可多次录制，系统取平均。\n\n准备好后点击「Yes」开始录音。",
         )
         if ok != QMessageBox.StandardButton.Yes:
             return
+        self._calibration_profile_name = name
         self._calibration_mode = True
         self.btn_record.setChecked(True)
         self._start_recording()
@@ -605,45 +662,55 @@ class MainWindow(QMainWindow):
         if self.manager is None:
             QMessageBox.warning(self, "未就绪", "模型尚未加载完成，请稍候。")
             return
+        name = self._ask_profile_name()
+        if not name:
+            return
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择平静朗读的音频文件", "", "音频文件 (*.wav *.mp3 *.flac *.ogg *.m4a)")
+            self, "选择该受试者平静朗读的音频文件", "", "音频文件 (*.wav *.mp3 *.flac *.ogg *.m4a)")
         if path:
+            self._calibration_profile_name = name
             self._calibration_mode = True
             self._start_analysis(path, source="calibration")
 
     def on_clear_user_calibration(self) -> None:
-        from src.fusion import personal_calibration
-        if personal_calibration.clear():
-            QMessageBox.information(self, "个人基线", "已删除个人基线，后续分析使用语料级校准。")
-        else:
-            QMessageBox.information(self, "个人基线", "当前没有个人基线。")
+        from src.fusion import personal_calibration as pc
+        name = self.profile_combo.currentData()
+        if not name:
+            QMessageBox.information(self, "受试者档案", "当前未选中任何档案。")
+            return
+        if QMessageBox.question(self, "删除档案", f"确定删除受试者档案「{name}」？") != QMessageBox.StandardButton.Yes:
+            return
+        pc.delete_profile(name)
+        self._refresh_profiles(select="")
         self.status_block.set_status("就绪")
 
     def _finish_calibration(self, result: dict) -> None:
-        """把一次分析结果转为个人基线并保存。"""
-        from src.fusion import personal_calibration
+        """把一次分析结果并入受试者档案并设为激活。"""
+        from src.fusion import personal_calibration as pc
         self._calibration_mode = False
+        name = getattr(self, "_calibration_profile_name", None)
         raw = result.get("modal_scores_raw") or result.get("modal_scores") or {}
-        offsets = personal_calibration.compute_offsets([raw])
-        if not offsets:
-            QMessageBox.warning(self, "个人基线", "未得到有效的模态分数，校准未保存。")
+        if not name or not raw:
+            QMessageBox.warning(self, "受试者档案", "未得到有效的模态分数或档案名，本次未保存。")
             self.status_block.set_status("就绪")
             return
         try:
-            path = personal_calibration.save(
-                offsets, meta={"source": getattr(self, "_pending_audio_path", ""),
-                               "duration_sec": result.get("duration")})
-        except OSError as e:
-            logger.exception("个人基线保存失败")
-            QMessageBox.critical(self, "保存失败", f"无法保存个人基线：{e}")
+            path = pc.save_profile(name, [raw], meta={"source": getattr(self, "_pending_audio_path", ""),
+                                                      "duration_sec": result.get("duration")})
+            pc.set_active(name)
+        except (OSError, ValueError) as e:
+            logger.exception("受试者档案保存失败")
+            QMessageBox.critical(self, "保存失败", f"无法保存档案：{e}")
             self.status_block.set_status("就绪")
             return
-        lines = [f"{m}: negative {v['negative']:+.2f}, arousal {v['arousal']:+.2f}"
-                 for m, v in offsets.items()]
+        self._refresh_profiles(select=name)
+        info = pc.profile_info(name)
+        lines = [f"{m}: negative {v[0]:+.2f}, arousal {v[1]:+.2f}" for m, v in pc.load_profile(name).items()]
         QMessageBox.information(
-            self, "个人基线已保存",
-            f"已保存到 {path}\n\n后续分析将用你的中性基线替代语料级校准：\n" + "\n".join(lines))
-        self.status_block.set_status("个人基线已保存")
+            self, "受试者档案已更新",
+            f"档案「{name}」已保存（{info.get('n_samples')} 次录音取平均）并设为当前档案：\n{path}\n\n"
+            "偏移量：\n" + "\n".join(lines))
+        self.status_block.set_status(f"档案 {name} 已保存")
         self._reenable_input_buttons()
 
     def _on_analysis_done(self, result: dict) -> None:
@@ -665,7 +732,12 @@ class MainWindow(QMainWindow):
                         f"arousal ±{unc.get('arousal_sd', 0):.2f}")
         src_txt = {"personal": "个人基线校准", "corpus": "语料级校准"}.get(result.get("calibration_source"), "")
         if src_txt:
-            meta.append(src_txt)
+            prof = result.get("calibration_profile")
+            meta.append(f"{src_txt}（档案 {prof}）" if prof and src_txt.startswith("个人") else src_txt)
+        rel = result.get("reliability") or {}
+        if rel:
+            acc = rel.get("accuracy_in_bin")
+            meta.insert(0, f"{rel['label_zh']}" + (f"（该档实测准确率 {acc:.2f}）" if acc is not None else ""))
         if result.get("fusion_mode") == "learned":
             meta.append("可学习融合")
         self.quadrant_meta.setText("  |  ".join(meta))
@@ -810,6 +882,9 @@ class MainWindow(QMainWindow):
             "modal_scores": result["modal_scores"],
             "memberships": result["memberships"],
             "paralang_events": result.get("paralang_events", []),
+            "calibration_profile": result.get("calibration_profile"),
+            "calibration_source": result.get("calibration_source"),
+            "uncertainty": result.get("uncertainty"),
         }
         self.history.add(record)
 

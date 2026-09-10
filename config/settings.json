@@ -48,10 +48,11 @@
     "snr_weight_floor": 0.3,
     "paralang_confidence_threshold": 0.3,
     "paralang_boost_threshold": 0.8,
-    "asr_confidence_threshold": 0.5,
+    "asr_confidence_threshold": 0.85,
     "quadrant_mid_v": 0.5,
     "quadrant_mid_a": 0.5,
-    "quadrant_band": 0.05
+    "quadrant_band": 0.05,
+    "_asr_confidence_note": "v0.4 起 asr_confidence 为 Paraformer token 后验均值（干净语音通常 > 0.9），低于此值时文本模态权重按比例衰减；代理指标回退时量纲不同，见 research_notes §2.3"
   },
   "stimulus": {
     "max_peak_dbfs": -10,

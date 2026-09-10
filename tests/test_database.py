@@ -164,3 +164,23 @@ def test_history_manager_export_and_clear(tmp_path):
     n = mgr.clear()
     assert n == 2
     assert mgr.remaining() == 10
+
+
+def test_schema_migration_adds_v04_columns(tmp_path):
+    """旧库（无 v0.4 列）打开后自动增列，可写入校准档案与不确定性。"""
+    import sqlite3
+
+    from src.storage.database import HistoryDB
+    db_path = tmp_path / "old.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""CREATE TABLE records (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
+                    source TEXT, negative REAL, asr_text TEXT, modal_scores TEXT)""")
+    conn.commit()
+    conn.close()
+    db = HistoryDB(db_path=db_path, max_records=10)
+    rid = db.add_record({"source": "upload", "negative": 0.4, "asr_text": "x",
+                         "calibration_profile": "S01", "calibration_source": "personal",
+                         "uncertainty": {"negative_sd": 0.1, "arousal_sd": 0.2}})
+    rec = db.get_record(rid)
+    assert rec["calibration_profile"] == "S01"
+    assert "0.1" in rec["uncertainty"]
